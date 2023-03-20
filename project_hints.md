@@ -75,7 +75,7 @@ client at the beginning is given the set of l2 caches
 all'inizio il database fa un broadcast a tutte le cache L1 e L2 per informare della sua esistenza.
 
 
-attore Pupeteer che fa crashare le varie cache, manda lui i crashMsgs
+attore Puppeteer che fa crashare le varie cache, manda lui i crashMsgs. esternament
 
 
 
