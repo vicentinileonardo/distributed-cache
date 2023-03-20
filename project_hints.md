@@ -72,11 +72,12 @@ e chiede valori
 client at the beginning is given the set of l2 caches
 
 
-all'inizio il database fa un broadcast a tutte le cache L1 e L2 per informare della sua esistenza.
+all'inizio il database fa un broadcast a tutte le cache L1 e L2 per informare della sua esistenza. (in quanto anche le L2 potenzialmente potrebbero contattarlo direttamente)
 
 
-attore Puppeteer che fa crashare le varie cache, manda lui i crashMsgs. esternament
-
+attore Puppeteer (o Master) che fa crashare le varie cache, manda lui i crashMsgs. esternamente
+inoltre, da valutare se questo attore sia colui in grado di verificare ogni volta l'eventual consistency 
+magari invece si potrebbe usare un altro attore (questione da decidere)
 
 
 ## Suggested outline
