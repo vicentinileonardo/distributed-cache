@@ -71,3 +71,12 @@ e chiede valori
 
 client at the beginning is given the set of l2 caches
 
+## Suggested outline
+
++ First, create a fixed multi-level structure for caches.
+Use configuration parameters for the number of L1 caches and the number of L2 for each L1. At startup, also create a (configurable) number of clients.
++ Then, implement the system with no crashes, and only with READ and WRITE operations.
++ Add crashes and check that all updates are eventually applied.
++ You can test this be checking that any write operation that was applied at the main database is also applied to all caches that hold the item. The order of operations is given by the processing order at the main database.
++ Finally, include the CRITICAL variants.
+
