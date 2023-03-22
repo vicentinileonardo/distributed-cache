@@ -17,6 +17,9 @@ dependencies {
 
     implementation "com.typesafe.akka:akka-actor_${versions.ScalaBinary}"
     testImplementation "com.typesafe.akka:akka-testkit_${versions.ScalaBinary}"
+
+    //snakeyaml
+    implementation 'org.yaml:snakeyaml:1.29'
 }
 
 compileJava {

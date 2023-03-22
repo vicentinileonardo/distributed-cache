@@ -7,14 +7,38 @@ import it.unitn.ds1.Database.CurrentDataMsg;
 import it.unitn.ds1.Database.ReadRequestMsg;
 import it.unitn.ds1.Database.WriteRequestMsg;
 
-
-import java.io.IOException;
+import java.io.*;
+import java.util.Map;
 
 import static java.lang.Thread.sleep;
 
+import org.yaml.snakeyaml.Yaml;
+
 public class DistributedCacheSystem {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
+
+        String configFilePath = System.getProperty("user.dir") + "/config.yaml";
+
+        System.out.println("Loading config from: " + configFilePath);
+
+        InputStream inputStream = new FileInputStream(new File(configFilePath));
+        Yaml yaml = new Yaml();
+        Map<String, Object> configuration = yaml.load(inputStream);
+
+        int N_CLIENTS = (int) configuration.get("N_CLIENTS");
+        int N_L2_CACHES = (int) configuration.get("N_L2_CACHES");
+        int N_L1_CACHES = (int) configuration.get("N_L1_CACHES");
+
+        System.out.println("N_CLIENTS: " + N_CLIENTS);
+        System.out.println("N_L2_CACHES: " + N_L2_CACHES);
+        System.out.println("N_L1_CACHES: " + N_L1_CACHES);
+
+
+
+
+
+
         final ActorSystem system = ActorSystem.create("distributed_cache_system");
 
         // create the database

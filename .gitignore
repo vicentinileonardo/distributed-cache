@@ -1,1 +1,10 @@
 .DS_Store
+
+.idea
+.idea/*
+
+# Compiled class file
+*.class
+
+.gradle
+build
