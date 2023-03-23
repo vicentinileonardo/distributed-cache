@@ -1,3 +1,13 @@
-N_CLIENTS: 10
-N_L2_CACHES: 10
-N_L1_CACHES: 10
+---
+clients:
+  - max_num: 10
+  - timeouts:
+      -
+L2_cache:
+  - max_num: 10
+  - timeouts:
+      -
+L1_cache:
+  - max_num: 10
+  - timeouts:
+      -
