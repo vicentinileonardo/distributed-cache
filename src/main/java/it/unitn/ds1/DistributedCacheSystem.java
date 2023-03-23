@@ -3,11 +3,11 @@ package it.unitn.ds1;
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 
-import it.unitn.ds1.Database.CurrentDataMsg;
-import it.unitn.ds1.Database.ReadRequestMsg;
-import it.unitn.ds1.Database.WriteRequestMsg;
+import it.unitn.ds1.Message.*;
 
 import java.io.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 import static java.lang.Thread.sleep;
@@ -35,10 +35,6 @@ public class DistributedCacheSystem {
         System.out.println("N_L1_CACHES: " + N_L1_CACHES);
 
 
-
-
-
-
         final ActorSystem system = ActorSystem.create("distributed_cache_system");
 
         // create the database
@@ -48,8 +44,13 @@ public class DistributedCacheSystem {
         //TODO
 
         //create the clients
-        //TODO
+        List<ActorRef> group = new ArrayList<>();
+        for (int i = 0; i < N_CLIENTS; i++) {
+            group.add(system.actorOf(Client.props(i), "client" + i));
+        }
 
+
+        //examples
         //read requests msg to the database
         ReadRequestMsg readRequestMsg = new ReadRequestMsg(4, 0);
         database.tell(readRequestMsg, ActorRef.noSender());
