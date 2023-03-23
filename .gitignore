@@ -2,9 +2,14 @@
 
 .idea
 .idea/*
+.idea/*.xml
 
 # Compiled class file
 *.class
 
 .gradle
+.gradle/*
+.gradle/*.xml
+.gradle/*.properties
 build
+build/*
