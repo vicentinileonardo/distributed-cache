@@ -41,7 +41,7 @@ public class DistributedCacheSystem {
         final ActorRef database = system.actorOf(Database.props(0), "database");
 
         //read the YAML config file and create the caches
-        //TODO
+        final
 
         //create the clients
         List<ActorRef> group = new ArrayList<>();

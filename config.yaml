@@ -1,13 +1,39 @@
 ---
+unbalanced: !!bool true
 clients:
-  - max_num: 10
+  - max_num: !!int 10
   - timeouts:
-      -
-L2_cache:
-  - max_num: 10
+      - type: !!str read
+        value: !!int 10
+      - type: !!str crit_read
+        value: !!int 10
+      - type: !!str write
+        value: !!int 10
+      - type: !!str crit_write
+        value: !!int 10
+L2_caches:
+  - max_num: !!int 10
   - timeouts:
-      -
-L1_cache:
-  - max_num: 10
+      - type: !!str read
+        value: !!int 10
+      - type: !!str crit_read
+        value: !!int 10
+      - type: !!str write
+        value: !!int 10
+      - type: !!str crit_write
+        value: !!int 10
+L1_caches:
+  - max_num: !!int 10
   - timeouts:
-      -
+      - type: !!str read
+        value: !!int 10
+      - type: !!str crit_read
+        value: !!int 10
+      - type: !!str write
+        value: !!int 10
+      - type: !!str crit_write
+        value: !!int 10
+database:
+  - timeouts:
+      - type: !!str refill
+        value: !!int 10
