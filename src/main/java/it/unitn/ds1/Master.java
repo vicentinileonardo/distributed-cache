@@ -7,6 +7,7 @@ import java.io.*;
 
 public class Master {
     private final String config_file;
+    private Configuration configuration;
 
     public Master(String config_file) {
         this.config_file = config_file;
@@ -23,14 +24,32 @@ public class Master {
         InputStream inputStream = new FileInputStream(configFilePath);
 
         System.out.println("Read yaml file!");
-        Configuration configuration = yaml.load(inputStream);
+        this.configuration = yaml.load(inputStream);
         System.out.println("Parsed config file!");
-        System.out.println(configuration.getDatabase().getTimeouts().get(0).getType());
+
+    }
+
+    public void buildSystem(){
+        boolean isUnbalanced = configuration.getSystemProperty().getUnbalanced();
+        if (isUnbalanced){
+            System.out.println("System is unbalanced!");
+            // Build database
+            // Build L1 caches up to maxNum
+            // Build L2 caches up to maxNum for each L1 cache
+            // Build clients up to maxNum for each L2 cache
+        } else {
+            System.out.println("System is balanced!");
+            // Build database
+            // Build maxNum L1 caches
+            // Build maxNum L2 caches
+            // Build maxNum clients
+        }
     }
 
     public static void main(String[] args) throws IOException{
         Master master = new Master("config.yaml");
         master.parse();
+        master.buildSystem();
     }
 }
 

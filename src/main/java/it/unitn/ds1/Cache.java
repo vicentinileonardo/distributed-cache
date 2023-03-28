@@ -11,10 +11,10 @@ public class Cache extends AbstractActor{
 
     private enum TYPE {L1, L2}
     private final int id;
-
     //DEBUG ONLY: assumption that the cache is always up
     private boolean crashed = false;
     private final TYPE type_of_cache;
+
     private Map<Integer, Integer> data = new HashMap<>();
 
     // since we use the same class for both types of cache
@@ -23,11 +23,16 @@ public class Cache extends AbstractActor{
     private Set<ActorRef> children = new HashSet<>();
 
     private ActorRef parent;
+
     private final ActorRef database;
 
+    private final HashMap<String, Integer> timeouts = new HashMap<String, Integer>();
+
     private Random rnd = new Random();
+
     private String classString = String.valueOf(getClass());
 
+    // ----------INITIALIZATION LOGIC----------
     public Cache(int id, String type, ActorRef parent) {
         this.id = id;
         this.parent = parent;
@@ -64,6 +69,95 @@ public class Cache extends AbstractActor{
 
     static public Props props(int id, String type, ActorRef parent, ActorRef database) {
         return Props.create(Cache.class, () -> new Cache(id, type, parent, database));
+    }
+
+    // ----------CRASHING LOGIC----------
+
+    public void crash(){
+        this.crashed = true;
+        clearData();
+    }
+
+    public boolean isCrashed(){
+        return this.crashed;
+    }
+
+    //----------DATA LOGIC----------
+
+    public void addData(int key, int value) {
+        this.data.put(key, value);
+    }
+
+    public int getData(int key) {
+        return this.data.get(key);
+    }
+
+    public boolean isDataPresent(int key) {
+        return this.data.containsKey(key);
+    }
+
+    public void clearData() {
+        this.data.clear();
+    }
+
+    //----------CHILDREN LOGIC----------
+
+    public void addChild(ActorRef child){
+        this.children.add(child);
+    }
+
+    public void removeChild(ActorRef child){
+        this.children.remove(child);
+    }
+
+    public Set<ActorRef> getChildren(){
+        return this.children;
+    }
+
+    public void setChildren(Set<ActorRef> children) {
+        this.children = children;
+    }
+
+    public void setChildren(ArrayList<ActorRef> children) {
+        for (ActorRef child : children){
+            addChild(child);
+        }
+    }
+
+    // ----------PARENT LOGIC----------
+
+    public void setParent(ActorRef parent) {
+        this.parent = parent;
+    }
+
+    public ActorRef getParent(){
+        return this.parent;
+    }
+
+    // ----------DATABASE LOGIC----------
+
+    public ActorRef getDatabase(){
+        return this.database;
+    }
+
+    // ----------TIMEOUT LOGIC----------
+
+    public void setTimeouts(ArrayList<Timeout> timeouts){
+        for (Timeout timeout: timeouts){
+            this.timeouts.put(timeout.getType(), timeout.getValue());
+        }
+    }
+
+    public HashMap<String, Integer> getTimeouts(){
+        return this.timeouts;
+    }
+
+    public int getTimeout(String type){
+        return this.timeouts.get(type);
+    }
+
+    public void setTimeout(String type, int value){
+        this.timeouts.put(type, value);
     }
 
     /*-- Actor logic -- */
