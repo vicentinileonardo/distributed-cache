@@ -19,4 +19,11 @@ public class Timeout {
     public void setValue(int value) {
         this.value = value;
     }
+
+    public Timeout(){}
+
+    public Timeout(String type, int value){
+        this.type = type;
+        this.value = value;
+    }
 }

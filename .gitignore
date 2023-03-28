@@ -13,3 +13,9 @@
 .gradle/*.properties
 build
 build/*
+/.gradle/
+/.idea/
+~/IdeaProjects/distributed-cache/.gradle/
+~/IdeaProjects/distributed-cache/.gradle/*
+~/IdeaProjects/distributed-cache/.idea/
+~/IdeaProjects/distributed-cache/.idea/*

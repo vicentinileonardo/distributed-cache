@@ -1,25 +1,37 @@
 package it.unitn.ds1;
 
-import java.util.List;
+import java.util.ArrayList;
 
 public class CacheConfiguration {
-    private int max_num;
-    private List<Timeout> timeouts;
+    private int maxNum;
+    private ArrayList<Timeout> timeouts = new ArrayList<Timeout>();
 
-    public int getMax_num() {
-        return max_num;
+    public int getMaxNum() {
+        return maxNum;
     }
 
-    public void setMax_num(int max_num) {
-        this.max_num = max_num;
+    public void setMaxNum(int maxNum) {
+        this.maxNum = maxNum;
     }
 
-    public List<Timeout> getTimeouts() {
+    public ArrayList<Timeout> getTimeouts() {
         return timeouts;
     }
 
-    public void setTimeouts(List<Timeout> timeouts) {
-        this.timeouts = timeouts;
+    public void setTimeouts(ArrayList<Timeout> timeouts) {
+        for(Timeout timeout: timeouts){
+            Timeout tmp = new Timeout(timeout.getType(), timeout.getValue());
+            this.timeouts.add(tmp);
+        }
     }
 
+    public CacheConfiguration(){}
+
+    public CacheConfiguration(int maxNum, ArrayList<Timeout> timeouts) {
+        this.maxNum = maxNum;
+        for (Timeout timeout : timeouts) {
+            Timeout tmp = new Timeout(timeout.getType(), timeout.getValue());
+            this.timeouts.add(tmp);
+        }
+    }
 }
