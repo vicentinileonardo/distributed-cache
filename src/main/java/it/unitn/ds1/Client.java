@@ -4,9 +4,9 @@ import akka.actor.ActorRef;
 import akka.actor.AbstractActor;
 import akka.actor.Props;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.HashMap;
 
+import java.util.List;
 import java.util.Random;
 
 public class Client extends AbstractActor {
@@ -16,17 +16,49 @@ public class Client extends AbstractActor {
     //DEBUG ONLY: assumption that clients are always up
     private boolean crashed = false;
 
-    private Set<ActorRef> L2_caches = new HashSet<>();
+    private ActorRef L2_cache;
+
+    private HashMap<String, Integer> timeouts = new HashMap<>();
 
     private Random rnd = new Random();
     private String classString = String.valueOf(getClass());
 
-    public Client(int id) {
+    public Client(int id, ActorRef parent, List<TimeoutConfiguration> timeouts) {
         this.id = id;
+        setL2_cache(parent);
+        setTimeouts(timeouts);
     }
 
-    static public Props props(int id) {
-        return Props.create(Client.class, () -> new Client(id));
+    static public Props props(int id, ActorRef parent, List<TimeoutConfiguration> timeouts) {
+        return Props.create(Client.class, () -> new Client(id, parent, timeouts));
+    }
+
+    public ActorRef getL2_cache() {
+        return this.L2_cache;
+    }
+
+    public void setL2_cache(ActorRef l2_cache) {
+        this.L2_cache = l2_cache;
+    }
+
+    // ----------TIMEOUT LOGIC----------
+
+    public void setTimeouts(List<TimeoutConfiguration> timeouts){
+        for (TimeoutConfiguration timeout: timeouts){
+            this.timeouts.put(timeout.getType(), timeout.getValue());
+        }
+    }
+
+    public HashMap<String, Integer> getTimeouts(){
+        return this.timeouts;
+    }
+
+    public int getTimeout(String type){
+        return this.timeouts.get(type);
+    }
+
+    public void setTimeout(String type, int value){
+        this.timeouts.put(type, value);
     }
 
 

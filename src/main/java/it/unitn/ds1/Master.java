@@ -1,55 +1,47 @@
 package it.unitn.ds1;
 
-import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.Constructor;
+import akka.actor.ActorRef;
 
-import java.io.*;
+import java.util.HashSet;
 
 public class Master {
-    private final String config_file;
-    private Configuration configuration;
 
-    public Master(String config_file) {
-        this.config_file = config_file;
+    private HashSet<ActorRef> l1CacheActors;
+    private HashSet<ActorRef> l2CacheActors;
+    private HashSet<ActorRef> clientActors;
+
+    public Master(HashSet<ActorRef> l1CacheActors,
+                  HashSet<ActorRef> l2CacheActors,
+                  HashSet<ActorRef> clientActors) {
+        setL1CacheActors(l1CacheActors);
+        setL2CacheActors(l2CacheActors);
+        setClientActors(clientActors);
     }
 
-    public void parse() throws IOException {
-        String configFilePath = System.getProperty("user.dir") + "/"+ this.config_file;
+    // ----------SYSTEM SETUP----------
 
-        System.out.println("Loading config from: " + configFilePath);
-
-
-        Yaml yaml = new Yaml(new Constructor(Configuration.class));
-        System.out.println("New yaml object!");
-        InputStream inputStream = new FileInputStream(configFilePath);
-
-        System.out.println("Read yaml file!");
-        this.configuration = yaml.load(inputStream);
-        System.out.println("Parsed config file!");
-
+    public HashSet<ActorRef> getL1CacheActors() {
+        return l1CacheActors;
     }
 
-    public void buildSystem(){
-        boolean isUnbalanced = configuration.getSystemProperty().getUnbalanced();
-        if (isUnbalanced){
-            System.out.println("System is unbalanced!");
-            // Build database
-            // Build L1 caches up to maxNum
-            // Build L2 caches up to maxNum for each L1 cache
-            // Build clients up to maxNum for each L2 cache
-        } else {
-            System.out.println("System is balanced!");
-            // Build database
-            // Build maxNum L1 caches
-            // Build maxNum L2 caches
-            // Build maxNum clients
-        }
+    public void setL1CacheActors(HashSet<ActorRef> l1CacheActors) {
+        this.l1CacheActors = l1CacheActors;
     }
 
-    public static void main(String[] args) throws IOException{
-        Master master = new Master("config.yaml");
-        master.parse();
-        master.buildSystem();
+    public HashSet<ActorRef> getL2CacheActors() {
+        return l2CacheActors;
+    }
+
+    public void setL2CacheActors(HashSet<ActorRef> l2CacheActors) {
+        this.l2CacheActors = l2CacheActors;
+    }
+
+    public HashSet<ActorRef> getClientActors() {
+        return clientActors;
+    }
+
+    public void setClientActors(HashSet<ActorRef> clientActors) {
+        this.clientActors = clientActors;
     }
 }
 

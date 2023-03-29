@@ -4,13 +4,7 @@ import akka.actor.ActorRef;
 import akka.actor.AbstractActor;
 import akka.actor.Props;
 
-import java.io.Serializable;
-import java.util.HashSet;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-
-import java.util.Random;
+import java.util.*;
 
 import it.unitn.ds1.Message.*;
 
@@ -28,20 +22,59 @@ public class Database extends AbstractActor {
     private Set<ActorRef> L2_caches = new HashSet<>();
     private Set<ActorRef> L1_caches = new HashSet<>();
 
+    private final HashMap<String, Integer> timeouts = new HashMap<>();
+
     private Random rnd = new Random();
     private String classString = String.valueOf(getClass());
 
-    public Database(int id) {
+    public Database(int id, List<TimeoutConfiguration> timeouts) {
         this.id = id;
+        setTimeouts(timeouts);
     }
 
-    static public Props props(int id) {
-        return Props.create(Database.class, () -> new Database(id));
+    static public Props props(int id, List<TimeoutConfiguration> timeouts) {
+        return Props.create(Database.class, () -> new Database(id, timeouts));
     }
 
+    // ----------L2 CACHES LOGIC----------
 
+    public Set<ActorRef> getL2_caches() {
+        return this.L2_caches;
+    }
 
+    public void setL2_caches(Set<ActorRef> l2_caches) {
+        this.L2_caches = l2_caches;
+    }
 
+    // ----------L1 CACHES LOGIC----------
+
+    public Set<ActorRef> getL1_caches() {
+        return this.L1_caches;
+    }
+
+    public void setL1_caches(Set<ActorRef> l1_caches) {
+        this.L1_caches = l1_caches;
+    }
+
+    // ----------TIMEOUT LOGIC----------
+
+    public void setTimeouts(List<TimeoutConfiguration> timeouts){
+        for (TimeoutConfiguration timeout: timeouts){
+            this.timeouts.put(timeout.getType(), timeout.getValue());
+        }
+    }
+
+    public HashMap<String, Integer> getTimeouts(){
+        return this.timeouts;
+    }
+
+    public int getTimeout(String type){
+        return this.timeouts.get(type);
+    }
+
+    public void setTimeout(String type, int value){
+        this.timeouts.put(type, value);
+    }
 
     /*-- Actor logic -- */
 

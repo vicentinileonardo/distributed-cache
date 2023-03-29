@@ -1,26 +1,27 @@
 package it.unitn.ds1;
 
 import java.util.ArrayList;
+import java.util.List;
 
 public class DatabaseConfiguration {
-    private ArrayList<Timeout> timeouts = new ArrayList<Timeout>();
+    private List<TimeoutConfiguration> timeouts = new ArrayList<>();
 
-    public ArrayList<Timeout> getTimeouts() {
+    public List<TimeoutConfiguration> getTimeouts() {
         return timeouts;
     }
 
-    public void setTimeouts(ArrayList<Timeout> timeouts) {
-        for(Timeout timeout: timeouts){
-            Timeout tmp = new Timeout(timeout.getType(), timeout.getValue());
+    public void setTimeouts(List<TimeoutConfiguration> timeouts) {
+        for(TimeoutConfiguration timeout: timeouts){
+            TimeoutConfiguration tmp = new TimeoutConfiguration(timeout.getType(), timeout.getValue());
             this.timeouts.add(tmp);
         }
     }
 
     public DatabaseConfiguration(){}
 
-    public DatabaseConfiguration(ArrayList<Timeout> timeouts) {
-        for (Timeout timeout : timeouts) {
-            Timeout tmp = new Timeout(timeout.getType(), timeout.getValue());
+    public DatabaseConfiguration(List<TimeoutConfiguration> timeouts) {
+        for (TimeoutConfiguration timeout : timeouts) {
+            TimeoutConfiguration tmp = new TimeoutConfiguration(timeout.getType(), timeout.getValue());
             this.timeouts.add(tmp);
         }
     }

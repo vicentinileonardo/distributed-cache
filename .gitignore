@@ -19,3 +19,5 @@ build/*
 ~/IdeaProjects/distributed-cache/.gradle/*
 ~/IdeaProjects/distributed-cache/.idea/
 ~/IdeaProjects/distributed-cache/.idea/*
+logs/
+logs

@@ -1,6 +1,6 @@
 package it.unitn.ds1;
 
-public class Timeout {
+public class TimeoutConfiguration {
     private String type;
     private int value;
 
@@ -20,9 +20,9 @@ public class Timeout {
         this.value = value;
     }
 
-    public Timeout(){}
+    public TimeoutConfiguration(){}
 
-    public Timeout(String type, int value){
+    public TimeoutConfiguration(String type, int value){
         this.type = type;
         this.value = value;
     }
