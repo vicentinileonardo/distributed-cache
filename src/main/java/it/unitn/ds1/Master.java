@@ -1,10 +1,13 @@
 package it.unitn.ds1;
 
+import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
+import akka.actor.Props;
 
 import java.util.HashSet;
+import java.util.List;
 
-public class Master {
+public class Master extends AbstractActor {
 
     private HashSet<ActorRef> l1CacheActors;
     private HashSet<ActorRef> l2CacheActors;
@@ -18,6 +21,11 @@ public class Master {
         setClientActors(clientActors);
     }
 
+    static public Props props(HashSet<ActorRef> l1CacheActors,
+                              HashSet<ActorRef> l2CacheActors,
+                              HashSet<ActorRef> clientActors) {
+        return Props.create(Master.class, () -> new Master(l1CacheActors, l2CacheActors, clientActors));
+    }
     // ----------SYSTEM SETUP----------
 
     public HashSet<ActorRef> getL1CacheActors() {
@@ -42,6 +50,11 @@ public class Master {
 
     public void setClientActors(HashSet<ActorRef> clientActors) {
         this.clientActors = clientActors;
+    }
+
+    @Override
+    public Receive createReceive() {
+        return null;
     }
 }
 

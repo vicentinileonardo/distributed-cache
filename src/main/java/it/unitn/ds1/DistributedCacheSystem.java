@@ -24,6 +24,8 @@ public class DistributedCacheSystem {
     private HashSet<ActorRef> l2CacheActors;
     private HashSet<ActorRef> clientActors;
 
+    private ActorRef master;
+
     public DistributedCacheSystem(String config_file) {
         this.config_file = config_file;
     }
@@ -53,6 +55,7 @@ public class DistributedCacheSystem {
     public void buildSystem(){
         boolean isUnbalanced = configuration.getSystemProperty().getUnbalanced();
         this.system = ActorSystem.create("distributed_cache_system");
+
         if (isUnbalanced){
             System.out.println("System is unbalanced!");
             // Build database
@@ -133,8 +136,21 @@ public class DistributedCacheSystem {
                 }
             }
         }
+
+        this.master = system.actorOf(Master.props(this.l1CacheActors, this.l2CacheActors, this.clientActors), "master");
     }
 
+    public void init() throws IOException {
+        for (ActorRef client: this.clientActors){
+            // send init message to l2 parent
+        }
+        for (ActorRef l2Cache: this.l2CacheActors){
+            // send init message to l1 parent
+        }
+        for (ActorRef l1Cache: this.l1CacheActors){
+            // send init message to db
+        }
+    }
     public static void main(String[] args) throws IOException {
 
         DistributedCacheSystem distributedCacheSystem = new DistributedCacheSystem("config.yaml");
@@ -145,6 +161,7 @@ public class DistributedCacheSystem {
         distributedCacheSystem.parse();
         distributedCacheSystem.buildSystem();
         System.out.println("System built!");
+        distributedCacheSystem.init();
         distributedCacheSystem.system.terminate();
 
         // create the database

@@ -6,6 +6,7 @@ import akka.actor.Props;
 
 import java.util.HashMap;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
 
@@ -16,7 +17,9 @@ public class Client extends AbstractActor {
     //DEBUG ONLY: assumption that clients are always up
     private boolean crashed = false;
 
-    private ActorRef L2_cache;
+    private HashSet<ActorRef> L2_caches;
+
+    private ActorRef parent;
 
     private HashMap<String, Integer> timeouts = new HashMap<>();
 
@@ -25,7 +28,7 @@ public class Client extends AbstractActor {
 
     public Client(int id, ActorRef parent, List<TimeoutConfiguration> timeouts) {
         this.id = id;
-        setL2_cache(parent);
+        setParent(parent);
         setTimeouts(timeouts);
     }
 
@@ -33,12 +36,12 @@ public class Client extends AbstractActor {
         return Props.create(Client.class, () -> new Client(id, parent, timeouts));
     }
 
-    public ActorRef getL2_cache() {
-        return this.L2_cache;
+    public ActorRef getParent() {
+        return this.parent;
     }
 
-    public void setL2_cache(ActorRef l2_cache) {
-        this.L2_cache = l2_cache;
+    public void setParent(ActorRef l2_cache) {
+        this.parent = l2_cache;
     }
 
     // ----------TIMEOUT LOGIC----------
@@ -79,4 +82,5 @@ public class Client extends AbstractActor {
             .build();
     }
 
+    // init message to parent
 }
