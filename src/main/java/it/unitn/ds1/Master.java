@@ -53,6 +53,20 @@ public class Master extends AbstractActor {
     }
 
     @Override
+    public void preStart() {
+        for (ActorRef client: this.clientActors){
+            client.tell(new Message.StartInitMsg(), ActorRef.noSender());
+        }
+        for (ActorRef l2Cache: this.l2CacheActors){
+            // send init message to l1 parent
+            l2Cache.tell(new Message.StartInitMsg(), ActorRef.noSender());
+        }
+        for (ActorRef l1Cache: this.l1CacheActors){
+            // send init message to db
+            l1Cache.tell(new Message.StartInitMsg(), ActorRef.noSender());
+        }
+    }
+    @Override
     public Receive createReceive() {
         return null;
     }

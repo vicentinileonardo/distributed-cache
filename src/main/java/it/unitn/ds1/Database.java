@@ -1,8 +1,6 @@
 package it.unitn.ds1;
 
-import akka.actor.ActorRef;
-import akka.actor.AbstractActor;
-import akka.actor.Props;
+import akka.actor.*;
 
 import java.util.*;
 
@@ -46,6 +44,18 @@ public class Database extends AbstractActor {
         this.L2_caches = l2_caches;
     }
 
+    public void addL2_cache(ActorRef l2_cache) {
+        this.L1_caches.add(l2_cache);
+    }
+
+    public void removeL2_cache(ActorRef l2_cache) {
+        this.L1_caches.remove(l2_cache);
+    }
+
+    public boolean getL2_cache(ActorRef l2_cache) {
+        return this.L2_caches.contains(l2_cache);
+    }
+
     // ----------L1 CACHES LOGIC----------
 
     public Set<ActorRef> getL1_caches() {
@@ -54,6 +64,18 @@ public class Database extends AbstractActor {
 
     public void setL1_caches(Set<ActorRef> l1_caches) {
         this.L1_caches = l1_caches;
+    }
+
+    public void addL1_cache(ActorRef l1_cache) {
+        this.L1_caches.add(l1_cache);
+    }
+
+    public void removeL1_cache(ActorRef l1_cache) {
+        this.L1_caches.remove(l1_cache);
+    }
+
+    public boolean getL1_cache(ActorRef l1_cache) {
+        return this.L1_caches.contains(l1_cache);
     }
 
     // ----------TIMEOUT LOGIC----------
@@ -83,10 +105,10 @@ public class Database extends AbstractActor {
 
         populateDatabase();
 
-        CustomPrint.print(classString,"Database " + id + " started");
-        CustomPrint.print(classString, "Initial data in database " + id + ":");
+        CustomPrint.print(classString,"",  ""," Started!");
+        CustomPrint.print(classString,"",  "", "Initial data in database " + id + ":");
         for (Map.Entry<Integer, Integer> entry : data.entrySet()) {
-            CustomPrint.print(classString, "Key = " + entry.getKey() + ", Value = " + entry.getValue());
+            CustomPrint.print(classString,"",  "", "Key = " + entry.getKey() + ", Value = " + entry.getValue());
         }
     }
 
@@ -146,12 +168,28 @@ public class Database extends AbstractActor {
     @Override
     public Receive createReceive() {
         return receiveBuilder()
-            .match(CurrentDataMsg.class, this::onCurrentDataMsg)
-            .match(DropDatabaseMsg.class, this::onDropDatabaseMsg)
-            .match(ReadRequestMsg.class, this::onReadRequestMsg)
-            .match(WriteRequestMsg.class, this::onWriteRequestMsg)
-            .matchAny(o -> System.out.println("Received unknown message from " + getSender()))
-            .build();
+                .match(Message.InitMsg.class, this::onInitMsg)
+                .match(CurrentDataMsg.class, this::onCurrentDataMsg)
+                .match(DropDatabaseMsg.class, this::onDropDatabaseMsg)
+                .match(ReadRequestMsg.class, this::onReadRequestMsg)
+                .match(WriteRequestMsg.class, this::onWriteRequestMsg)
+                .matchAny(o -> System.out.println("Received unknown message from " + getSender()))
+                .build();
+    }
+
+    private void onInitMsg(Message.InitMsg msg) throws InvalidMessageException{
+//        ActorRef tmp = getSender();
+//        if (tmp == null){
+//            System.out.println("Cache " + id + " received message from null actor");
+//            return;
+//        }
+//        addL1_cache(tmp);
+        if (!Objects.equals(msg.type, "L1")) {
+            throw new InvalidMessageException("Message to wrong destination!");
+        }
+        addL1_cache(msg.id);
+        System.out.println("[DATABASE]" +
+                " Added " + getSender() + " as a child");
     }
 
 }

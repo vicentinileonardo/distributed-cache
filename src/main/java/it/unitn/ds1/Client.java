@@ -17,7 +17,7 @@ public class Client extends AbstractActor {
     //DEBUG ONLY: assumption that clients are always up
     private boolean crashed = false;
 
-    private HashSet<ActorRef> L2_caches;
+    private HashSet<ActorRef> L2_caches = new HashSet<>();
 
     private ActorRef parent;
 
@@ -26,15 +26,18 @@ public class Client extends AbstractActor {
     private Random rnd = new Random();
     private String classString = String.valueOf(getClass());
 
-    public Client(int id, ActorRef parent, List<TimeoutConfiguration> timeouts) {
+    public Client(int id, ActorRef parent, List<TimeoutConfiguration> timeouts, HashSet<ActorRef> l2Caches) {
         this.id = id;
         setParent(parent);
         setTimeouts(timeouts);
+        setL2_caches(l2Caches);
     }
 
-    static public Props props(int id, ActorRef parent, List<TimeoutConfiguration> timeouts) {
-        return Props.create(Client.class, () -> new Client(id, parent, timeouts));
+    static public Props props(int id, ActorRef parent, List<TimeoutConfiguration> timeouts, HashSet<ActorRef> l2Caches) {
+        return Props.create(Client.class, () -> new Client(id, parent, timeouts, l2Caches));
     }
+
+    // ----------PARENT LOGIC----------
 
     public ActorRef getParent() {
         return this.parent;
@@ -42,6 +45,16 @@ public class Client extends AbstractActor {
 
     public void setParent(ActorRef l2_cache) {
         this.parent = l2_cache;
+    }
+
+    // ----------L2 CACHE LOGIC----------
+
+    public HashSet<ActorRef> getL2_caches() {
+        return this.L2_caches;
+    }
+
+    public void setL2_caches(HashSet<ActorRef> l2_caches) {
+        this.L2_caches = l2_caches;
     }
 
     // ----------TIMEOUT LOGIC----------
@@ -69,18 +82,27 @@ public class Client extends AbstractActor {
 
     @Override
     public void preStart() {
-
-        CustomPrint.print(classString,"Client " + id + " started");
+        CustomPrint.print(classString,"", String.valueOf(this.id), " Started!");
     }
 
+    // ----------SEND LOGIC----------
+    public void sendInitMsg(){
+        Message.InitMsg msg = new Message.InitMsg(getSelf(), "client");
+        parent.tell(msg, getSelf());
+    }
+
+    // ----------RECEIVE LOGIC----------
 
     // Here we define the mapping between the received message types and the database methods
     @Override
     public Receive createReceive() {
         return receiveBuilder()
-            .matchAny(o -> System.out.println("Client " + id +" received unknown message from " + getSender()))
-            .build();
+                .match(Message.StartInitMsg.class, this::onStartInitMsg)
+                .matchAny(o -> System.out.println("Client " + id +" received unknown message from " + getSender()))
+                .build();
     }
 
-    // init message to parent
+    private void onStartInitMsg(Message.StartInitMsg msg) {
+        sendInitMsg();
+    }
 }

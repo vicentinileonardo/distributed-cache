@@ -2,6 +2,7 @@ package it.unitn.ds1;
 
 import akka.actor.ActorRef;
 import akka.actor.AbstractActor;
+import akka.actor.InvalidMessageException;
 import akka.actor.Props;
 
 // import java.io.Serializable;
@@ -11,6 +12,7 @@ import java.util.logging.FileHandler;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.logging.SimpleFormatter;
+
 public class Cache extends AbstractActor{
     private Logger logger = Logger.getLogger(Cache.class.getName());
     private enum TYPE {L1, L2}
@@ -92,7 +94,8 @@ public class Cache extends AbstractActor{
 
     // ----------LOGGING LOGIC----------
     private void log(String message) throws IOException {
-        FileHandler fileHandler = new FileHandler("logs/cache.log", 0,1, false);
+        String filename = "logs/" + this.type_of_cache.toString() + "cache.log";
+        FileHandler fileHandler = new FileHandler(filename, 0,1, false);
         this.logger.addHandler(fileHandler);
         this.logger.setUseParentHandlers(false);
         SimpleFormatter formatter = new SimpleFormatter();
@@ -179,6 +182,7 @@ public class Cache extends AbstractActor{
         for (TimeoutConfiguration timeout: timeouts){
             this.timeouts.put(timeout.getType(), timeout.getValue());
         }
+
     }
 
     public HashMap<String, Integer> getTimeouts(){
@@ -196,17 +200,48 @@ public class Cache extends AbstractActor{
     /*-- Actor logic -- */
     public void preStart() {
 
-        CustomPrint.print(classString,type_of_cache +" Cache " + id + " started");
+        CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Started!");
     }
 
+    // ----------SEND LOGIC----------
+
+    private void onStartInitMsg(Message.StartInitMsg msg) {
+        sendInitMsg();
+    }
+
+    private void sendInitMsg(){
+        Message.InitMsg msg = new Message.InitMsg(getSelf(), this.type_of_cache.toString());
+        parent.tell(msg, getSelf());
+
+        System.out.println("[" + this.type_of_cache + " Cache " + this.id + "]" +
+                " Sent initialization msg to " + this.parent);
+    }
+
+    // ----------RECEIVE LOGIC----------
 
     // Here we define the mapping between the received message types and the database methods
     @Override
     public Receive createReceive() {
         return receiveBuilder()
+                .match(Message.StartInitMsg.class, this::onStartInitMsg)
+                .match(Message.InitMsg.class, this::onInitMsg)
                 .matchAny(o -> System.out.println("Cache " + id +" received unknown message from " + getSender()))
                 .build();
     }
 
-    // on receive init message add child
+    private void onInitMsg(Message.InitMsg msg) throws InvalidMessageException {
+//        ActorRef tmp = getSender();
+//        if (tmp == null){
+//            System.out.println("Cache " + id + " received message from null actor");
+//            return;
+//        }
+//        addChild(tmp);
+        if ((this.type_of_cache == TYPE.L1 && !Objects.equals(msg.type, "L2")) ||
+                (this.type_of_cache == TYPE.L2 && !Objects.equals(msg.type, "client"))){
+            throw new InvalidMessageException("Message to wrong destination!");
+        }
+        addChild(msg.id);
+        System.out.println("[" + this.type_of_cache + " Cache " + this.id + "]" +
+                " Added " + getSender() + " as a child");
+    }
 }
