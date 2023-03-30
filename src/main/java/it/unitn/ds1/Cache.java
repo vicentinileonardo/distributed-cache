@@ -5,10 +5,14 @@ import akka.actor.AbstractActor;
 import akka.actor.Props;
 
 // import java.io.Serializable;
+import java.io.IOException;
 import java.util.*;
-
+import java.util.logging.FileHandler;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.logging.SimpleFormatter;
 public class Cache extends AbstractActor{
-
+    private Logger logger = Logger.getLogger(Cache.class.getName());
     private enum TYPE {L1, L2}
     private final int id;
     //DEBUG ONLY: assumption that the cache is always up
@@ -26,14 +30,18 @@ public class Cache extends AbstractActor{
 
     private final ActorRef database;
 
-    private final HashMap<String, Integer> timeouts = new HashMap<String, Integer>();
+    private final HashMap<String, Integer> timeouts = new HashMap<>();
 
     private Random rnd = new Random();
 
     private String classString = String.valueOf(getClass());
 
     // ----------INITIALIZATION LOGIC----------
-    public Cache(int id, String type, ActorRef parent) {
+    public Cache(int id,
+                 String type,
+                 ActorRef parent,
+                 List<TimeoutConfiguration> timeouts) throws IOException {
+
         this.id = id;
         this.parent = parent;
 
@@ -45,10 +53,17 @@ public class Cache extends AbstractActor{
         } else {
             throw new IllegalArgumentException("Wrong type of cache requested!");
         }
+        setTimeouts(timeouts);
 
+        log("["+this.type_of_cache+" Cache " + this.id + "] Cache initialized!");
     }
 
-    public Cache(int id, String type, ActorRef parent, ActorRef database) {
+    public Cache(int id,
+                 String type,
+                 ActorRef parent,
+                 ActorRef database,
+                 List<TimeoutConfiguration> timeouts) throws IOException {
+
         this.id = id;
 
         if (type.equals("L1")){
@@ -61,21 +76,39 @@ public class Cache extends AbstractActor{
 
         this.parent = parent;
         this.database = database;
+        setTimeouts(timeouts);
+
+
+        log("["+this.type_of_cache+" Cache " + this.id + "] Cache initialized!");
     }
 
-    static public Props props(int id, String type, ActorRef parent) {
-        return Props.create(Cache.class, () -> new Cache(id, type, parent));
+    static public Props props(int id, String type, ActorRef parent, List<TimeoutConfiguration> timeouts) {
+        return Props.create(Cache.class, () -> new Cache(id, type, parent, timeouts));
     }
 
-    static public Props props(int id, String type, ActorRef parent, ActorRef database) {
-        return Props.create(Cache.class, () -> new Cache(id, type, parent, database));
+    static public Props props(int id, String type, ActorRef parent, ActorRef database, List<TimeoutConfiguration> timeouts) {
+        return Props.create(Cache.class, () -> new Cache(id, type, parent, database, timeouts));
     }
 
+    // ----------LOGGING LOGIC----------
+    private void log(String message) throws IOException {
+        FileHandler fileHandler = new FileHandler("logs/cache.log", 0,1, false);
+        this.logger.addHandler(fileHandler);
+        this.logger.setUseParentHandlers(false);
+        SimpleFormatter formatter = new SimpleFormatter();
+        fileHandler.setFormatter(formatter);
+        if (this.logger.isLoggable(Level.INFO)){
+            this.logger.log(Level.INFO, message);
+        }
+        fileHandler.close();
+    }
     // ----------CRASHING LOGIC----------
 
-    public void crash(){
+    public void crash() throws IOException {
         this.crashed = true;
         clearData();
+        String msg = "["+this.type_of_cache+" Cache "+this.id+"] Crashed!";
+        log(msg);
     }
 
     public boolean isCrashed(){
@@ -118,7 +151,7 @@ public class Cache extends AbstractActor{
         this.children = children;
     }
 
-    public void setChildren(ArrayList<ActorRef> children) {
+    public void setChildren(List<ActorRef> children) {
         for (ActorRef child : children){
             addChild(child);
         }
@@ -142,8 +175,8 @@ public class Cache extends AbstractActor{
 
     // ----------TIMEOUT LOGIC----------
 
-    public void setTimeouts(ArrayList<Timeout> timeouts){
-        for (Timeout timeout: timeouts){
+    public void setTimeouts(List<TimeoutConfiguration> timeouts){
+        for (TimeoutConfiguration timeout: timeouts){
             this.timeouts.put(timeout.getType(), timeout.getValue());
         }
     }
@@ -163,7 +196,7 @@ public class Cache extends AbstractActor{
     /*-- Actor logic -- */
     public void preStart() {
 
-        CustomPrint.print(classString,"Cache " + id + " started");
+        CustomPrint.print(classString,type_of_cache +" Cache " + id + " started");
     }
 
 
