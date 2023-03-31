@@ -5,16 +5,10 @@ import akka.actor.AbstractActor;
 import akka.actor.InvalidMessageException;
 import akka.actor.Props;
 
-// import java.io.Serializable;
 import java.io.IOException;
 import java.util.*;
-import java.util.logging.FileHandler;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.logging.SimpleFormatter;
 
 public class Cache extends AbstractActor{
-    private Logger logger = Logger.getLogger(Cache.class.getName());
     private enum TYPE {L1, L2}
     private final int id;
     //DEBUG ONLY: assumption that the cache is always up
@@ -57,7 +51,7 @@ public class Cache extends AbstractActor{
         }
         setTimeouts(timeouts);
 
-        log("["+this.type_of_cache+" Cache " + this.id + "] Cache initialized!");
+        System.out.println("["+this.type_of_cache+" Cache " + this.id + "] Cache initialized!");
     }
 
     public Cache(int id,
@@ -81,7 +75,7 @@ public class Cache extends AbstractActor{
         setTimeouts(timeouts);
 
 
-        log("["+this.type_of_cache+" Cache " + this.id + "] Cache initialized!");
+        System.out.println("["+this.type_of_cache+" Cache " + this.id + "] Cache initialized!");
     }
 
     static public Props props(int id, String type, ActorRef parent, List<TimeoutConfiguration> timeouts) {
@@ -92,26 +86,13 @@ public class Cache extends AbstractActor{
         return Props.create(Cache.class, () -> new Cache(id, type, parent, database, timeouts));
     }
 
-    // ----------LOGGING LOGIC----------
-    private void log(String message) throws IOException {
-        String filename = "logs/" + this.type_of_cache.toString() + "cache.log";
-        FileHandler fileHandler = new FileHandler(filename, 0,1, false);
-        this.logger.addHandler(fileHandler);
-        this.logger.setUseParentHandlers(false);
-        SimpleFormatter formatter = new SimpleFormatter();
-        fileHandler.setFormatter(formatter);
-        if (this.logger.isLoggable(Level.INFO)){
-            this.logger.log(Level.INFO, message);
-        }
-        fileHandler.close();
-    }
     // ----------CRASHING LOGIC----------
 
     public void crash() throws IOException {
         this.crashed = true;
         clearData();
         String msg = "["+this.type_of_cache+" Cache "+this.id+"] Crashed!";
-        log(msg);
+        System.out.println(msg);
     }
 
     public boolean isCrashed(){
@@ -198,6 +179,7 @@ public class Cache extends AbstractActor{
     }
 
     /*-- Actor logic -- */
+
     public void preStart() {
 
         CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Started!");
@@ -205,7 +187,7 @@ public class Cache extends AbstractActor{
 
     // ----------SEND LOGIC----------
 
-    private void onStartInitMsg(Message.StartInitMsg msg) {
+    private void onStartInitMsg(Message.StartInitMsg msg){
         sendInitMsg();
     }
 
@@ -213,8 +195,8 @@ public class Cache extends AbstractActor{
         Message.InitMsg msg = new Message.InitMsg(getSelf(), this.type_of_cache.toString());
         parent.tell(msg, getSelf());
 
-        System.out.println("[" + this.type_of_cache + " Cache " + this.id + "]" +
-                " Sent initialization msg to " + this.parent);
+        String log_msg = "["+this.type_of_cache+" Cache "+this.id+"] Sent initialization msg to " + this.parent;
+        System.out.println(log_msg);
     }
 
     // ----------RECEIVE LOGIC----------
@@ -229,7 +211,7 @@ public class Cache extends AbstractActor{
                 .build();
     }
 
-    private void onInitMsg(Message.InitMsg msg) throws InvalidMessageException {
+    private void onInitMsg(Message.InitMsg msg) throws InvalidMessageException{
 //        ActorRef tmp = getSender();
 //        if (tmp == null){
 //            System.out.println("Cache " + id + " received message from null actor");
@@ -241,7 +223,7 @@ public class Cache extends AbstractActor{
             throw new InvalidMessageException("Message to wrong destination!");
         }
         addChild(msg.id);
-        System.out.println("[" + this.type_of_cache + " Cache " + this.id + "]" +
-                " Added " + getSender() + " as a child");
+        String log_msg = "["+this.type_of_cache+" Cache "+this.id+"] Added " + getSender() + " as a child";
+        System.out.println(log_msg);
     }
 }

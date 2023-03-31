@@ -19,6 +19,7 @@ public class Master extends AbstractActor {
         setL1CacheActors(l1CacheActors);
         setL2CacheActors(l2CacheActors);
         setClientActors(clientActors);
+        System.out.println("Master initialized");
     }
 
     static public Props props(HashSet<ActorRef> l1CacheActors,
@@ -26,6 +27,7 @@ public class Master extends AbstractActor {
                               HashSet<ActorRef> clientActors) {
         return Props.create(Master.class, () -> new Master(l1CacheActors, l2CacheActors, clientActors));
     }
+
     // ----------SYSTEM SETUP----------
 
     public HashSet<ActorRef> getL1CacheActors() {
@@ -54,21 +56,12 @@ public class Master extends AbstractActor {
 
     @Override
     public void preStart() {
-        for (ActorRef client: this.clientActors){
-            client.tell(new Message.StartInitMsg(), ActorRef.noSender());
-        }
-        for (ActorRef l2Cache: this.l2CacheActors){
-            // send init message to l1 parent
-            l2Cache.tell(new Message.StartInitMsg(), ActorRef.noSender());
-        }
-        for (ActorRef l1Cache: this.l1CacheActors){
-            // send init message to db
-            l1Cache.tell(new Message.StartInitMsg(), ActorRef.noSender());
-        }
     }
     @Override
     public Receive createReceive() {
-        return null;
+        return receiveBuilder()
+                .matchAny(o -> System.out.println("Master received unknown message from " + getSender()))
+                .build();
     }
 }
 

@@ -1,11 +1,9 @@
 package it.unitn.ds1;
 
-import akka.actor.ActorRef;
 import akka.actor.AbstractActor;
+import akka.actor.ActorRef;
 import akka.actor.Props;
-
 import java.util.HashMap;
-
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -43,8 +41,8 @@ public class Client extends AbstractActor {
         return this.parent;
     }
 
-    public void setParent(ActorRef l2_cache) {
-        this.parent = l2_cache;
+    public void setParent(ActorRef parent) {
+        this.parent = parent;
     }
 
     // ----------L2 CACHE LOGIC----------
@@ -80,7 +78,6 @@ public class Client extends AbstractActor {
 
     /*-- Actor logic -- */
 
-    @Override
     public void preStart() {
         CustomPrint.print(classString,"", String.valueOf(this.id), " Started!");
     }
@@ -103,6 +100,7 @@ public class Client extends AbstractActor {
     }
 
     private void onStartInitMsg(Message.StartInitMsg msg) {
+        CustomPrint.print(classString,"", String.valueOf(this.id), " Received initialization msg!");
         sendInitMsg();
     }
 }

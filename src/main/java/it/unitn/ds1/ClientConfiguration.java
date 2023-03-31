@@ -5,6 +5,9 @@ import java.util.List;
 
 public class ClientConfiguration {
     private int maxNum;
+
+    private int customNum;
+
     private List<TimeoutConfiguration> timeouts = new ArrayList<>();
 
     public int getMaxNum() {
@@ -13,6 +16,14 @@ public class ClientConfiguration {
 
     public void setMaxNum(int maxNum) {
         this.maxNum = maxNum;
+    }
+
+    public int getCustomNum() {
+        return customNum;
+    }
+
+    public void setCustomNum(int customNum) {
+        this.customNum = customNum;
     }
 
     public List<TimeoutConfiguration> getTimeouts() {
@@ -35,4 +46,5 @@ public class ClientConfiguration {
             this.timeouts.add(tmp);
         }
     }
+
 }

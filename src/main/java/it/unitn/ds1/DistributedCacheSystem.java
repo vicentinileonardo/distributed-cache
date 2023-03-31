@@ -52,100 +52,187 @@ public class DistributedCacheSystem {
         return random.nextInt((max - start) + 1) + start;
     }
 
-    public void buildSystem(){
-        boolean isUnbalanced = configuration.getSystemProperty().getUnbalanced();
+    public void buildCustomSystem(){
         this.system = ActorSystem.create("distributed_cache_system");
+        System.out.println("Custom system creation!");
+        // Build database
+        this.databaseActor = system.actorOf(Database.props(0, configuration.getDatabase().getTimeouts()));
 
-        if (isUnbalanced){
-            System.out.println("System is unbalanced!");
-            // Build database
-            this.databaseActor = system.actorOf(Database.props(0, configuration.getDatabase().getTimeouts()));
-            // Build L1 caches up to maxNum
-            int l1_num = randomRangeRandom(configuration.getL1Caches().getMaxNum());
-            this.l1CacheActors = new HashSet<>();
-            for (int i = 0; i < l1_num; i++) {
-                this.l1CacheActors.add(system.actorOf(Cache.props(i,
-                        "L1",
-                        databaseActor,
-                        configuration.getL1Caches().getTimeouts())));
-            }
+        // Build L1 caches up to maxNum
 
-            // Build L2 caches up to maxNum for each L1 cache
-            this.l2CacheActors = new HashSet<>();
-            for (ActorRef l1Cache : l1CacheActors) {
-                int l2_num = randomRangeRandom(configuration.getL2Caches().getMaxNum());
-                for (int i = 0; i < l2_num; i++) {
-                    this.l2CacheActors.add(system.actorOf(Cache.props(i,
-                            "L2",
-                            l1Cache,
-                            databaseActor,
-                            configuration.getL2Caches().getTimeouts())));
-                }
-            }
-
-            // Build clients up to maxNum for each L2 cache
-            this.clientActors = new HashSet<>();
-            for (ActorRef l2Cache : l2CacheActors) {
-                int client_num = randomRangeRandom(configuration.getClients().getMaxNum());
-                for (int i = 0; i < client_num; i++) {
-                    this.clientActors.add(system.actorOf(Client.props(i,
-                            l2Cache,
-                            configuration.getClients().getTimeouts(),
-                            l2CacheActors)));
-                }
-            }
-        } else {
-            System.out.println("System is balanced!");
-            // Build database
-            this.databaseActor = system.actorOf(Database.props(0, configuration.getDatabase().getTimeouts()));
-            // Build L1 caches up to maxNum
-            this.l1CacheActors = new HashSet<>();
-            for (int i = 0; i < configuration.getL1Caches().getMaxNum(); i++) {
-                this.l1CacheActors.add(system.actorOf(Cache.props(i,
-                        "L1",
-                        databaseActor,
-                        configuration.getL1Caches().getTimeouts())));
-            }
-
-            // Build L2 caches up to maxNum for each L1 cache
-            this.l2CacheActors = new HashSet<>();
-            for (ActorRef l1Cache : l1CacheActors) {
-                for (int i = 0; i < configuration.getL2Caches().getMaxNum(); i++) {
-                    this.l2CacheActors.add(system.actorOf(Cache.props(i,
-                            "L2",
-                            l1Cache,
-                            databaseActor,
-                            configuration.getL2Caches().getTimeouts())));
-                }
-            }
-
-            // Build clients up to maxNum for each L2 cache
-            this.clientActors = new HashSet<>();
-            for (ActorRef l2Cache : l2CacheActors) {
-                for (int i = 0; i < configuration.getClients().getMaxNum(); i++) {
-                    this.clientActors.add(system.actorOf(Client.props(i,
-                            l2Cache,
-                            configuration.getClients().getTimeouts(),
-                            l2CacheActors)));
-                }
-            }
+        this.l1CacheActors = new HashSet<>();
+        int totalL1Num = configuration.getL1Caches().getCustomNum();
+        for (int i = 0; i < totalL1Num; i++) {
+            this.l1CacheActors.add(system.actorOf(Cache.props(i,
+                    "L1",
+                    databaseActor,
+                    configuration.getL1Caches().getTimeouts())));
         }
+
+        // Build L2 caches up to maxNum for each L1 cache
+        this.l2CacheActors = new HashSet<>();
+        int totalL2Caches = 0;
+        int l2Num = 0;
+        int totalL2Num = configuration.getL2Caches().getCustomNum();
+        int l2CachesPerL1Cache = totalL2Num / totalL1Num;
+        int l2CacheToSpare = totalL2Num % totalL1Num;
+
+        for (ActorRef l1Cache : l1CacheActors) {
+            if (l2CachesPerL1Cache == 0 && l2CacheToSpare == 0) {
+                continue;
+            } else if (l2CacheToSpare == 0) {
+                l2Num = l2CachesPerL1Cache;
+            } else {
+                l2Num = l2CachesPerL1Cache + 1;
+                l2CacheToSpare--;
+            }
+            for (int i = 0; i < l2Num; i++) {
+                this.l2CacheActors.add(system.actorOf(Cache.props(i+totalL2Caches,
+                        "L2",
+                        l1Cache,
+                        databaseActor,
+                        configuration.getL2Caches().getTimeouts())));
+            }
+            totalL2Caches += l2Num;
+        }
+
+        // Build clients up to maxNum for each L2 cache
+        this.clientActors = new HashSet<>();
+        int totalClients = 0;
+        int clientNum = 0;
+
+        int totalClientsNum = configuration.getClients().getCustomNum();
+        int clientsPerL2Cache = totalClientsNum / totalL2Num;
+        int clientsToSpare = totalClientsNum % totalL2Num;
+
+        for (ActorRef l2Cache : l2CacheActors) {
+            if (clientsPerL2Cache == 0 && clientsToSpare == 0) {
+                continue;
+            } else if (clientsToSpare == 0) {
+                clientNum = clientsPerL2Cache;
+            } else {
+                clientNum = clientsPerL2Cache + 1;
+                l2CacheToSpare--;
+            }
+            for (int i = 0; i < clientNum; i++) {
+                this.clientActors.add(system.actorOf(Client.props(i+totalClients,
+                        l2Cache,
+                        configuration.getClients().getTimeouts(),
+                        l2CacheActors)));
+            }
+            totalClients += clientNum;
+        }
+        System.out.println("Client " + (totalClients == totalClientsNum) );
 
         this.master = system.actorOf(Master.props(this.l1CacheActors, this.l2CacheActors, this.clientActors), "master");
     }
 
-    public void init() throws IOException {
-        for (ActorRef client: this.clientActors){
-            // send init message to client
+    public void buildAutoSystem(){
+
+        System.out.println("Automatic system creation!");
+        boolean isUnbalanced = configuration.getSystemProperty().getUnbalanced();
+        this.system = ActorSystem.create("distributed_cache_system");
+
+        // Build database
+        this.databaseActor = system.actorOf(Database.props(0, configuration.getDatabase().getTimeouts()));
+
+        // Build L1 caches up to maxNum
+        int l1_num;
+        if (isUnbalanced) {
+            l1_num = randomRangeRandom(configuration.getL1Caches().getMaxNum());
+        } else {
+            l1_num = configuration.getL1Caches().getMaxNum();
         }
-        for (ActorRef l2Cache: this.l2CacheActors){
-            // send init message to l1 parent
+
+        this.l1CacheActors = new HashSet<>();
+        for (int i = 0; i < l1_num; i++) {
+            this.l1CacheActors.add(system.actorOf(Cache.props(i,
+                    "L1",
+                    databaseActor,
+                    configuration.getL1Caches().getTimeouts())));
         }
-        for (ActorRef l1Cache: this.l1CacheActors){
-            // send init message to db
+
+        // Build L2 caches up to maxNum for each L1 cache
+        this.l2CacheActors = new HashSet<>();
+        int total_l2_caches = 0;
+        int l2_num = 0;
+        boolean randomL2Num = false;
+        if (isUnbalanced) {
+            randomL2Num = true;
+        } else {
+            l2_num = configuration.getL2Caches().getMaxNum();
+        }
+
+        for (ActorRef l1Cache : l1CacheActors) {
+            if (randomL2Num) {
+                l2_num = randomRangeRandom(configuration.getL2Caches().getMaxNum());
+            }
+            for (int i = 0; i < l2_num; i++) {
+                this.l2CacheActors.add(system.actorOf(Cache.props(i+total_l2_caches,
+                        "L2",
+                        l1Cache,
+                        databaseActor,
+                        configuration.getL2Caches().getTimeouts())));
+            }
+            total_l2_caches += l2_num;
+        }
+
+        // Build clients up to maxNum for each L2 cache
+        this.clientActors = new HashSet<>();
+        int total_clients = 0;
+        int client_num = 0;
+        boolean randomClientNum = false;
+        if (isUnbalanced) {
+            randomClientNum = true;
+        } else {
+            client_num = configuration.getClients().getMaxNum();
+        }
+
+        for (ActorRef l2Cache : l2CacheActors) {
+            if (randomClientNum) {
+                client_num = randomRangeRandom(configuration.getClients().getMaxNum());
+            }
+            for (int i = 0; i < client_num; i++) {
+                this.clientActors.add(system.actorOf(Client.props(i+total_clients,
+                        l2Cache,
+                        configuration.getClients().getTimeouts(),
+                        l2CacheActors)));
+            }
+            total_clients += client_num;
+        }
+        this.master = system.actorOf(Master.props(this.l1CacheActors, this.l2CacheActors, this.clientActors), "master");
+    }
+
+    public void buildSystem(){
+        if (configuration.getSystemProperty().getCustom()){
+            buildCustomSystem();
+        } else {
+            buildAutoSystem();
         }
     }
-    public static void main(String[] args) throws IOException {
+
+    public void init() {
+        for (ActorRef client: this.clientActors){
+            // send init message to client
+            Message.StartInitMsg msg = new Message.StartInitMsg();
+            client.tell(msg, ActorRef.noSender());
+        }
+        System.out.println("Clients initialized");
+        for (ActorRef l2Cache: this.l2CacheActors){
+            // send init message to l1 parent
+            Message.StartInitMsg msg = new Message.StartInitMsg();
+            l2Cache.tell(msg, ActorRef.noSender());
+        }
+        System.out.println("L2 caches initialized");
+        for (ActorRef l1Cache: this.l1CacheActors){
+            // send init message to db
+            Message.StartInitMsg msg = new Message.StartInitMsg();
+            l1Cache.tell(msg, ActorRef.noSender());
+        }
+        System.out.println("L1 caches initialized");
+    }
+
+    public static void main(String[] args) throws IOException, InterruptedException {
 
         DistributedCacheSystem distributedCacheSystem = new DistributedCacheSystem("config.yaml");
         String configFilePath = System.getProperty("user.dir") + distributedCacheSystem.config_file;
@@ -155,37 +242,8 @@ public class DistributedCacheSystem {
         distributedCacheSystem.parse();
         distributedCacheSystem.buildSystem();
         System.out.println("System built!");
-        // distributedCacheSystem.init();
+        distributedCacheSystem.init();
         distributedCacheSystem.system.terminate();
-
-        // create the database
-        // final ActorRef database = system.actorOf(Database.props(0, ), "database");
-
-        //read the YAML config file and create the caches
-        // final
-
-        //create the clients
-//        List<ActorRef> group = new ArrayList<>();
-//        for (int i = 0; i < N_CLIENTS; i++) {
-//            group.add(system.actorOf(Client.props(i), "client" + i));
-//        }
-
-
-        //examples
-        //read requests msg to the database
-//        ReadRequestMsg readRequestMsg = new ReadRequestMsg(4, 0);
-//        database.tell(readRequestMsg, ActorRef.noSender());
-//
-//        //write requests msg to the database
-//        WriteRequestMsg writeRequestMsg = new WriteRequestMsg(5, 5, 3);
-//        database.tell(writeRequestMsg, ActorRef.noSender());
-//
-//        //current database state
-//        CurrentDataMsg currentDataMsg = new CurrentDataMsg();
-//        database.tell(currentDataMsg, ActorRef.noSender());
-
-
-
 
 //        try {
 //            sleep(2000);

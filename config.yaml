@@ -1,7 +1,9 @@
 systemProperty:
-  unbalanced: !!bool true
+  unbalanced: !!bool false
+  custom: !!bool true
 clients:
   maxNum: !!int 10
+  customNum: !!int 10
   timeouts:
     - type: !!str read
       value: !!int 10
@@ -13,6 +15,7 @@ clients:
       value: !!int 10
 l2Caches:
   maxNum: !!int 10
+  customNum: !!int 10
   timeouts:
     - type: !!str read
       value: !!int 10
@@ -24,6 +27,7 @@ l2Caches:
       value: !!int 10
 l1Caches:
   maxNum: !!int 10
+  customNum: !!int 10
   timeouts:
     - type: !!str read
       value: !!int 10
