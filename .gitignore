@@ -1,1 +1,23 @@
 .DS_Store
+
+.idea
+.idea/*
+.idea/*.xml
+
+# Compiled class file
+*.class
+
+.gradle
+.gradle/*
+.gradle/*.xml
+.gradle/*.properties
+build
+build/*
+/.gradle/
+/.idea/
+~/IdeaProjects/distributed-cache/.gradle/
+~/IdeaProjects/distributed-cache/.gradle/*
+~/IdeaProjects/distributed-cache/.idea/
+~/IdeaProjects/distributed-cache/.idea/*
+logs/
+logs

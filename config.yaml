@@ -1,0 +1,43 @@
+systemProperty:
+  unbalanced: !!bool false
+  custom: !!bool true
+clients:
+  maxNum: !!int 10
+  customNum: !!int 10
+  timeouts:
+    - type: !!str read
+      value: !!int 10
+    - type: !!str crit_read
+      value: !!int 10
+    - type: !!str write
+      value: !!int 10
+    - type: !!str crit_write
+      value: !!int 10
+l2Caches:
+  maxNum: !!int 10
+  customNum: !!int 10
+  timeouts:
+    - type: !!str read
+      value: !!int 10
+    - type: !!str crit_read
+      value: !!int 10
+    - type: !!str write
+      value: !!int 10
+    - type: !!str crit_write
+      value: !!int 10
+l1Caches:
+  maxNum: !!int 10
+  customNum: !!int 10
+  timeouts:
+    - type: !!str read
+      value: !!int 10
+    - type: !!str crit_read
+      value: !!int 10
+    - type: !!str write
+      value: !!int 10
+    - type: !!str crit_write
+      value: !!int 10
+database:
+  timeouts:
+    - type: !!str refill
+      value: !!int 10
