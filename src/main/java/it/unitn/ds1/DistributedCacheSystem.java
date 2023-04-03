@@ -232,6 +232,21 @@ public class DistributedCacheSystem {
         System.out.println("L1 caches initialized");
     }
 
+
+    private void sendWriteMsgs() {
+        ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
+
+        // generate a random number
+        Random rndm = new Random();
+
+        // this will generate a random number between 0 and
+        // HashSet.size - 1
+        int rndmNumber = rndm.nextInt(this.clientActors.size());
+        ActorRef client = tmpArray[rndmNumber];
+        Message.StartWriteMsg msg = new Message.StartWriteMsg(0, 10);
+        client.tell(msg, ActorRef.noSender());
+    }
+
     public static void main(String[] args) throws IOException, InterruptedException {
 
         DistributedCacheSystem distributedCacheSystem = new DistributedCacheSystem("config.yaml");
@@ -243,8 +258,10 @@ public class DistributedCacheSystem {
         distributedCacheSystem.buildSystem();
         System.out.println("System built!");
         distributedCacheSystem.init();
+        sleep(2000);
+        distributedCacheSystem.sendWriteMsgs();
+        distributedCacheSystem.databaseActor.tell(new Message.CurrentDataMsg(), ActorRef.noSender());
         distributedCacheSystem.system.terminate();
-
 //        try {
 //            sleep(2000);
 //            System.out.println(">>> Press ENTER to exit <<<");
@@ -256,4 +273,5 @@ public class DistributedCacheSystem {
 //        system.terminate();
 
     }
+
 }

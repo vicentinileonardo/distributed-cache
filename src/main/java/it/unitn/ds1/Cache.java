@@ -207,10 +207,37 @@ public class Cache extends AbstractActor{
         return receiveBuilder()
                 .match(Message.StartInitMsg.class, this::onStartInitMsg)
                 .match(Message.InitMsg.class, this::onInitMsg)
+                .match(Message.WriteMsg.class, this::onWriteMsg)
+                .match(Message.WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
                 .matchAny(o -> System.out.println("Cache " + id +" received unknown message from " + getSender()))
                 .build();
     }
 
+    // ----------WRITE MESSAGES LOGIC----------
+    private void onWriteConfirmationMsg(Message.WriteConfirmationMsg msg){
+        ActorRef destination = msg.path.pop();
+        destination.tell(msg, getSelf());
+
+        if (data.containsKey(msg.key)){
+            data.put(msg.key, msg.value);
+        }
+    }
+
+    private void onWriteMsg(Message.WriteMsg msg){
+        msg.path.push(getSelf());
+        CustomPrint.print(classString,
+                type_of_cache.toString()+" ",
+                String.valueOf(id),
+                " Stack: "+msg.path.toString());
+
+        parent.tell(msg, getSelf());
+        CustomPrint.print(classString,
+                type_of_cache.toString()+" ",
+                String.valueOf(id),
+                " Sent write msg to " + this.parent);
+    }
+
+    // ----------INITIALIZATION MESSAGES LOGIC----------
     private void onInitMsg(Message.InitMsg msg) throws InvalidMessageException{
 //        ActorRef tmp = getSender();
 //        if (tmp == null){

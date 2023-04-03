@@ -3,10 +3,12 @@ package it.unitn.ds1;
 import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Random;
+import scala.concurrent.Await;
+import akka.util.Timeout;
+import akka.pattern.*;
+import scala.concurrent.duration.*;
+
+import java.util.*;
 
 public class Client extends AbstractActor {
 
@@ -88,6 +90,15 @@ public class Client extends AbstractActor {
         parent.tell(msg, getSelf());
     }
 
+    public void sendWriteMsg(int key, int value){
+        Stack<ActorRef> path = new Stack<>();
+        path.push(getSelf());
+        Message.WriteMsg msg = new Message.WriteMsg(key, value, path);
+        parent.tell(msg, getSelf());
+        CustomPrint.print(classString,"", String.valueOf(this.id), " Sent write msg!");
+
+    }
+
     // ----------RECEIVE LOGIC----------
 
     // Here we define the mapping between the received message types and the database methods
@@ -95,6 +106,8 @@ public class Client extends AbstractActor {
     public Receive createReceive() {
         return receiveBuilder()
                 .match(Message.StartInitMsg.class, this::onStartInitMsg)
+                .match(Message.StartWriteMsg.class, this::onStartWriteMsg)
+                .match(Message.WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
                 .matchAny(o -> System.out.println("Client " + id +" received unknown message from " + getSender()))
                 .build();
     }
@@ -102,5 +115,15 @@ public class Client extends AbstractActor {
     private void onStartInitMsg(Message.StartInitMsg msg) {
         CustomPrint.print(classString,"", String.valueOf(this.id), " Received initialization msg!");
         sendInitMsg();
+    }
+
+    // ----------WRITE MESSAGES LOGIC----------
+    private void onStartWriteMsg(Message.StartWriteMsg msg) {
+        CustomPrint.print(classString,"", String.valueOf(this.id), " Received write msg!");
+        sendWriteMsg(msg.key, msg.value);
+    }
+
+    private void onWriteConfirmationMsg(Message.WriteConfirmationMsg msg) {
+        CustomPrint.print(classString,"", String.valueOf(this.id), " Received write confirmation msg!");
     }
 }
