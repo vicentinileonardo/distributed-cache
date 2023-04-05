@@ -247,6 +247,20 @@ public class DistributedCacheSystem {
         client.tell(msg, ActorRef.noSender());
     }
 
+    private void sendReadMsgs() {
+        ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
+
+        // generate a random number
+        Random rndm = new Random();
+
+        // this will generate a random number between 0 and
+        // HashSet.size - 1
+        int rndmNumber = rndm.nextInt(this.clientActors.size());
+        ActorRef client = tmpArray[rndmNumber];
+        Message.StartReadRequestMsg msg = new Message.StartReadRequestMsg(0);
+        client.tell(msg, ActorRef.noSender());
+    }
+
     public static void main(String[] args) throws IOException, InterruptedException {
 
         DistributedCacheSystem distributedCacheSystem = new DistributedCacheSystem("config.yaml");
@@ -258,8 +272,15 @@ public class DistributedCacheSystem {
         distributedCacheSystem.buildSystem();
         System.out.println("System built!");
         distributedCacheSystem.init();
+        distributedCacheSystem.sendReadMsgs();
         sleep(2000);
         distributedCacheSystem.sendWriteMsgs();
+        sleep(2000);
+
+
+        //client read msg
+
+
         distributedCacheSystem.databaseActor.tell(new Message.CurrentDataMsg(), ActorRef.noSender());
         distributedCacheSystem.system.terminate();
 //        try {

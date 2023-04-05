@@ -207,10 +207,76 @@ public class Cache extends AbstractActor{
         return receiveBuilder()
                 .match(Message.StartInitMsg.class, this::onStartInitMsg)
                 .match(Message.InitMsg.class, this::onInitMsg)
+                .match(Message.ClientReadRequestMsg.class, this::onClientReadRequestMsg)
+                .match(Message.CacheReadRequestMsg.class, this::onCacheReadRequestMsg)
+                .match(Message.CacheReadResponseMsg.class, this::onCacheReadResponseMsg)
                 .match(Message.WriteMsg.class, this::onWriteMsg)
                 .match(Message.WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
                 .matchAny(o -> System.out.println("Cache " + id +" received unknown message from " + getSender()))
                 .build();
+    }
+
+    // ----------READ MESSAGES LOGIC----------
+
+    // this function is called only by l2 cache
+    public void onClientReadRequestMsg(Message.ClientReadRequestMsg clientReadRequestMsg){
+        if (isDataPresent(clientReadRequestMsg.key)){
+            //send response to child (client)
+            ActorRef child = clientReadRequestMsg.client;
+            int value = getData(clientReadRequestMsg.key);
+
+            Message.ClientReadResponseMsg response = new Message.ClientReadResponseMsg(clientReadRequestMsg.key, value);
+            child.tell(response, getSelf());
+        } else { // data not present
+            //send cache read request to parent (l1 cache) (or database, with crashes (not yet implemented))
+            Message.CacheReadRequestMsg cacheReadRequestMsg = new Message.CacheReadRequestMsg(clientReadRequestMsg, getSelf());
+            parent.tell(cacheReadRequestMsg, getSelf());
+        }
+    }
+
+    // this function (on this class) is called only by l1 cache
+    public void onCacheReadRequestMsg(Message.CacheReadRequestMsg cacheReadRequestMsg){
+        if (isDataPresent(cacheReadRequestMsg.key)){
+            //send response to child (l2 cache)
+            ActorRef child = cacheReadRequestMsg.L2cache; // l2 cache
+            ActorRef client = cacheReadRequestMsg.client;
+            int value = getData(cacheReadRequestMsg.key);
+
+            Message.CacheReadResponseMsg response = new Message.CacheReadResponseMsg(cacheReadRequestMsg.key, value, getSelf(), child, client);
+            child.tell(response, getSelf());
+        } else { // data not present
+            //send database read request (from l1 cache) to database
+            Message.CacheReadRequestMsg l1cacheReadRequestMsg = new Message.CacheReadRequestMsg(cacheReadRequestMsg, getSelf());
+            database.tell(l1cacheReadRequestMsg, getSelf());
+        }
+    }
+
+    //database to l1 cache
+    // or l1 cache to l2 cache
+    public void onCacheReadResponseMsg(Message.CacheReadResponseMsg cacheReadResponseMsg){
+
+        //add data to cache
+        addData(cacheReadResponseMsg.key, cacheReadResponseMsg.value);
+
+        //this approach must be changed when crashes are implemented
+        if (this.type_of_cache == TYPE.L1){
+
+            //send response to child (l2 cache)
+            ActorRef child = cacheReadResponseMsg.L2cache;
+            ActorRef client = cacheReadResponseMsg.client;
+            int value = cacheReadResponseMsg.value;
+
+            Message.CacheReadResponseMsg response = new Message.CacheReadResponseMsg(cacheReadResponseMsg.key, value, getSelf(), child, client);
+            child.tell(response, getSelf());
+        } else if (this.type_of_cache == TYPE.L2){
+
+            //send response to child (client)
+            ActorRef child = cacheReadResponseMsg.client;
+            int value = cacheReadResponseMsg.value;
+
+            Message.ClientReadResponseMsg response = new Message.ClientReadResponseMsg(cacheReadResponseMsg.key, value);
+            child.tell(response, getSelf());
+        }
     }
 
     // ----------WRITE MESSAGES LOGIC----------

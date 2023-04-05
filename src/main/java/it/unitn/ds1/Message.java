@@ -30,25 +30,68 @@ public class Message {
     public static class DropDatabaseMsg implements Serializable {}
 
     // ----------READ MESSAGES----------
-    public static class ReadRequestMsg implements Serializable {
-        public final int key;
-        public final int clientID; //maybe not needed
 
-        public ReadRequestMsg(int key, int clientID) {
+    public static class ClientReadRequestMsg implements Serializable {
+        public final int key;
+        public final ActorRef client; //this or clientID?
+
+        public ClientReadRequestMsg(int key, ActorRef client) {
             this.key = key;
-            this.clientID = clientID;
+            this.client = client;
         }
     }
 
-    public static class ReadConfirmationMsg implements Serializable {
+    public static class CacheReadRequestMsg implements Serializable {
+
+        public final int key;
+        public final ActorRef sender;
+        public final ActorRef L1cache; //this or cacheID?
+        public final ActorRef L2cache;
+        public final ActorRef client;
+
+        //created by l2cache
+        public CacheReadRequestMsg(ClientReadRequestMsg clientMsg, ActorRef self) {
+            this.key = clientMsg.key;
+            this.sender = self;
+            this.L1cache = null;
+            this.L2cache = self;
+            this.client = clientMsg.client;
+        }
+
+        //created by l1cache
+        public CacheReadRequestMsg(CacheReadRequestMsg cacheMsg, ActorRef self) {
+            this.key = cacheMsg.key;
+            this.sender = self;
+            this.L1cache = self;
+            this.L2cache = cacheMsg.L2cache;
+            this.client = cacheMsg.client;
+
+        }
+    }
+
+    public static class ClientReadResponseMsg implements Serializable {
         public final int key;
         public final int value;
-        public final int clientID;
 
-        public ReadConfirmationMsg(int key, int value, int clientID) {
+        public ClientReadResponseMsg(int key, int value) {
             this.key = key;
             this.value = value;
-            this.clientID = clientID;
+        }
+    }
+
+    public static class CacheReadResponseMsg implements Serializable {
+        public final int key;
+        public final int value;
+        public final ActorRef L1cache;
+        public final ActorRef L2cache;
+        public final ActorRef client;
+
+        public CacheReadResponseMsg(int key, int value, ActorRef L1cache, ActorRef L2cache, ActorRef client) {
+            this.key = key;
+            this.value = value;
+            this.L1cache = L1cache;
+            this.L2cache = L2cache;
+            this.client = client;
         }
     }
 
@@ -62,6 +105,14 @@ public class Message {
             this.key = key;
             this.value = value;
             this.path = path;
+        }
+    }
+
+    public static class StartReadRequestMsg implements Serializable {
+        public final int key;
+
+        public StartReadRequestMsg(int key) {
+            this.key = key;
         }
     }
 
