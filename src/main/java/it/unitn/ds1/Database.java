@@ -4,10 +4,13 @@ import akka.actor.*;
 
 import java.util.*;
 
+import akka.event.Logging;
+import akka.event.LoggingAdapter;
 import it.unitn.ds1.Message.*;
 
 public class Database extends AbstractActor {
 
+    private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
     private int id;
 
     //DEBUG ONLY: assumption that the database is always up
@@ -104,11 +107,10 @@ public class Database extends AbstractActor {
     public void preStart() {
 
         populateDatabase();
-
-        CustomPrint.print(classString,"",  ""," Started!");
-        CustomPrint.print(classString,"",  "", "Initial data in database " + id + ":");
+        log.info("[DATABASE] Started!");
+        log.info("[DATABASE] Initial data in database : ");
         for (Map.Entry<Integer, Integer> entry : data.entrySet()) {
-            CustomPrint.print(classString,"",  "", "Key = " + entry.getKey() + ", Value = " + entry.getValue());
+            log.info("[DATABASE] Key = " + entry.getKey() + ", Value = " + entry.getValue());
         }
     }
 
@@ -116,7 +118,7 @@ public class Database extends AbstractActor {
         for (int i = 0; i < 10; i++) {
             data.put(i, rnd.nextInt(200));
         }
-        CustomPrint.debugPrint(classString, "Database " + id + " populated");
+        log.debug("[DATABASE] Populated!");
     }
 
     // ----------SENDING LOGIC----------
@@ -124,10 +126,14 @@ public class Database extends AbstractActor {
     private void sendWriteConfirmation(WriteMsg msg, Set<ActorRef> caches) {
         for (ActorRef cache : caches) {
             if (!cache.equals(getSender())){
-                cache.tell(new FillMsg(msg.key, msg.value), ActorRef.noSender());
+                log.debug("[DATABASE] Sending fill message to " + cache.path().name());
+                // CustomPrint.debugPrint(classString, "",""," Send Fill to " + cache);
+                cache.tell(new FillMsg(msg.key, msg.value), getSelf());
             } else {
                 msg.path.pop();
-                cache.tell(new WriteConfirmationMsg(msg.key, msg.value, msg.path), ActorRef.noSender());
+                cache.tell(new WriteConfirmationMsg(msg.key, msg.value, msg.path), getSelf());
+                log.debug("[DATABASE] Sending write confirmation to " + cache.path().name());
+
             }
         }
     }
@@ -142,32 +148,25 @@ public class Database extends AbstractActor {
                 .match(DropDatabaseMsg.class, this::onDropDatabaseMsg)
                 .match(ReadRequestMsg.class, this::onReadRequestMsg)
                 .match(WriteMsg.class, this::onWriteMsg)
-                .matchAny(o -> System.out.println("Received unknown message from " + getSender()))
+                .matchAny(o -> log.info("[DATABASE] Received unknown message from "+ getSender()))
                 .build();
     }
 
     // ----------INITIALIZATION MESSAGES LOGIC----------
     private void onInitMsg(Message.InitMsg msg) throws InvalidMessageException{
-//        ActorRef tmp = getSender();
-//        if (tmp == null){
-//            System.out.println("Cache " + id + " received message from null actor");
-//            return;
-//        }
-//        addL1_cache(tmp);
+
         if (!Objects.equals(msg.type, "L1")) {
             throw new InvalidMessageException("Message to wrong destination!");
         }
         addL1_cache(msg.id);
-        System.out.println("[DATABASE]" +
-                " Added " + getSender() + " as a child");
+        log.info("[DATABASE] Added L1 cache {} as a child!", getSender().path().name());
     }
 
     // ----------READ MESSAGES LOGIC----------
     public void onReadRequestMsg(ReadRequestMsg msg) {
-        CustomPrint.debugPrint(classString, "Database " + id + " received a read request for key " + msg.key + " from client " + msg.clientID);
+        log.debug("[DATABASE] Received read request for key {} from {}", msg.key, getSender().path().name());
         int value = data.get(msg.key);
-        CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + msg.key);
-
+        log.debug("[DATABASE] Read value {} for key {}", value, msg.key);
         /*
         ReadConfirmationMsg readConfirmationMsg = new ReadConfirmationMsg(msg.key, value, msg.clientID);
         for (ActorRef cache : L2_caches) {
@@ -181,16 +180,20 @@ public class Database extends AbstractActor {
 
     // ----------WRITE MESSAGES LOGIC----------
     public void onWriteMsg(WriteMsg msg) {
-        CustomPrint.debugPrint(classString, "Database " + id + " received a write request for key " + msg.key + " with value " + msg.value);
+        log.debug("[DATABASE] Received write request for key {} with value {} from {}",
+                msg.key, msg.value, getSender().path().name());
 
         data.put(msg.key, msg.value);
-        CustomPrint.debugPrint(classString, "Database " + id + " wrote key " + msg.key + " with value " + msg.value);
 
+        log.debug("[DATABASE] Wrote value {} for key {}", msg.value, msg.key);
         // notify all L1 caches
+
+        log.info("[DATABASE] Send write confirmation to L1 caches");
         sendWriteConfirmation(msg, L1_caches);
 
         // notify all L2 caches that are connected directly with the db
         if (!L2_caches.isEmpty()) {
+            log.info("[DATABASE] Send write confirmation to L2 caches directly connected!");
             sendWriteConfirmation(msg, L2_caches);
         }
 
@@ -198,16 +201,17 @@ public class Database extends AbstractActor {
 
     // ----------GENERAL DATABASE MESSAGES LOGIC----------
     public void onCurrentDataMsg(CurrentDataMsg msg) {
-        CustomPrint.debugPrint(classString, "Current data in database " + id + ":");
+        CustomPrint.debugPrint(classString, "","", "Current data in database " + id + ":");
+        log.debug("[DATABASE] Current data in database:");
         for (Map.Entry<Integer, Integer> entry : data.entrySet()) {
-            CustomPrint.debugPrint(classString, "Key = " + entry.getKey() + ", Value = " + entry.getValue());
+            log.debug("[DATABASE] Key = " + entry.getKey() + ", Value = " + entry.getValue());
         }
     }
 
     // DEBUG ONLY: assumption is that the database is always up
     public void onDropDatabaseMsg(DropDatabaseMsg msg) {
-        CustomPrint.debugPrint(classString, "Database drop request");
+        log.debug("[DATABASE] Database drop request!");
         data.clear();
-        CustomPrint.debugPrint(classString, "Database " + id + " dropped");
+        log.debug("[DATABASE] Dropped database!");
     }
 }

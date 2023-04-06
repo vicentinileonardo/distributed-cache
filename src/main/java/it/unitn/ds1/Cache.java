@@ -4,11 +4,15 @@ import akka.actor.ActorRef;
 import akka.actor.AbstractActor;
 import akka.actor.InvalidMessageException;
 import akka.actor.Props;
+import akka.event.Logging;
+import akka.event.LoggingAdapter;
 
 import java.io.IOException;
 import java.util.*;
 
 public class Cache extends AbstractActor{
+
+    private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
     private enum TYPE {L1, L2}
     private final int id;
     //DEBUG ONLY: assumption that the cache is always up
@@ -51,7 +55,7 @@ public class Cache extends AbstractActor{
         }
         setTimeouts(timeouts);
 
-        System.out.println("["+this.type_of_cache+" Cache " + this.id + "] Cache initialized!");
+        log.info("[{} CACHE {}] Cache initialized!", this.type_of_cache.toString(), String.valueOf(this.id));
     }
 
     public Cache(int id,
@@ -74,8 +78,7 @@ public class Cache extends AbstractActor{
         this.database = database;
         setTimeouts(timeouts);
 
-
-        System.out.println("["+this.type_of_cache+" Cache " + this.id + "] Cache initialized!");
+        log.info("[{} CACHE {}] Cache initialized!", this.type_of_cache.toString(), String.valueOf(this.id));
     }
 
     static public Props props(int id, String type, ActorRef parent, List<TimeoutConfiguration> timeouts) {
@@ -91,8 +94,8 @@ public class Cache extends AbstractActor{
     public void crash() throws IOException {
         this.crashed = true;
         clearData();
-        String msg = "["+this.type_of_cache+" Cache "+this.id+"] Crashed!";
-        System.out.println(msg);
+        log.info("[{} CACHE {}] Cache crashed!", this.type_of_cache.toString(), String.valueOf(this.id));
+        // CustomPrint.infoPrint(classString, this.type_of_cache.toString(), String.valueOf(this.id), " Crashed!");
     }
 
     public boolean isCrashed(){
@@ -182,7 +185,9 @@ public class Cache extends AbstractActor{
 
     public void preStart() {
 
-        CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Started!");
+        // CustomPrint.infoPrint(classString, type_of_cache.toString()+" ", String.valueOf(id), " Started!");
+        log.info("[{} CACHE {}] Cache started!", this.type_of_cache.toString(), String.valueOf(this.id));
+
     }
 
     // ----------SEND LOGIC----------
@@ -195,8 +200,6 @@ public class Cache extends AbstractActor{
         Message.InitMsg msg = new Message.InitMsg(getSelf(), this.type_of_cache.toString());
         parent.tell(msg, getSelf());
 
-        String log_msg = "["+this.type_of_cache+" Cache "+this.id+"] Sent initialization msg to " + this.parent;
-        System.out.println(log_msg);
     }
 
     // ----------RECEIVE LOGIC----------
@@ -209,48 +212,65 @@ public class Cache extends AbstractActor{
                 .match(Message.InitMsg.class, this::onInitMsg)
                 .match(Message.WriteMsg.class, this::onWriteMsg)
                 .match(Message.WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
-                .matchAny(o -> System.out.println("Cache " + id +" received unknown message from " + getSender()))
+                .match(Message.FillMsg.class, this::onFillMsg)
+                .matchAny(o -> log.info("[{} CACHE {}] Received unknown message from {}!",
+                        this.type_of_cache.toString(), String.valueOf(this.id), getSender().path().name()))
                 .build();
     }
 
     // ----------WRITE MESSAGES LOGIC----------
     private void onWriteConfirmationMsg(Message.WriteConfirmationMsg msg){
-        ActorRef destination = msg.path.pop();
-        destination.tell(msg, getSelf());
+        if (!isCrashed()) {
+            ActorRef destination = msg.path.pop();
+            destination.tell(msg, getSelf());
 
-        if (data.containsKey(msg.key)){
-            data.put(msg.key, msg.value);
+            if (data.containsKey(msg.key)) {
+                data.put(msg.key, msg.value);
+            }
+
+            log.debug("[{} CACHE {}] Data: {}",
+                    this.type_of_cache.toString(), String.valueOf(this.id), data.toString());
         }
     }
 
     private void onWriteMsg(Message.WriteMsg msg){
-        msg.path.push(getSelf());
-        CustomPrint.print(classString,
-                type_of_cache.toString()+" ",
-                String.valueOf(id),
-                " Stack: "+msg.path.toString());
+        if(!isCrashed()) {
+            msg.path.push(getSelf());
+            parent.tell(msg, getSelf());
 
-        parent.tell(msg, getSelf());
-        CustomPrint.print(classString,
-                type_of_cache.toString()+" ",
-                String.valueOf(id),
-                " Sent write msg to " + this.parent);
+            log.info("[{} CACHE {}] Sent write msg to {}!",
+                    this.type_of_cache.toString(), String.valueOf(this.id), this.parent.path().name());
+        }
+    }
+
+    private void onFillMsg(Message.FillMsg msg){
+        if(!isCrashed()){
+            if (this.data.containsKey(msg.key)){
+                this.data.put(msg.key, msg.value);
+            }
+            log.debug("[{} CACHE {}] Data: {}",
+                    this.type_of_cache.toString(), String.valueOf(this.id), data.toString());
+            for (ActorRef child : this.children){
+                Message.FillMsg fillMsg = new Message.FillMsg(msg.key, msg.value);
+                if (child.path().name().contains("cache")){
+                    child.tell(fillMsg, getSelf());
+                    log.info("[{} CACHE {}] Sent fill msg to {}!",
+                            this.type_of_cache.toString(), String.valueOf(this.id), child.path().name());
+                }
+            }
+        }
     }
 
     // ----------INITIALIZATION MESSAGES LOGIC----------
     private void onInitMsg(Message.InitMsg msg) throws InvalidMessageException{
-//        ActorRef tmp = getSender();
-//        if (tmp == null){
-//            System.out.println("Cache " + id + " received message from null actor");
-//            return;
-//        }
-//        addChild(tmp);
         if ((this.type_of_cache == TYPE.L1 && !Objects.equals(msg.type, "L2")) ||
                 (this.type_of_cache == TYPE.L2 && !Objects.equals(msg.type, "client"))){
             throw new InvalidMessageException("Message to wrong destination!");
         }
+
         addChild(msg.id);
-        String log_msg = "["+this.type_of_cache+" Cache "+this.id+"] Added " + getSender() + " as a child";
-        System.out.println(log_msg);
+        String log_msg = " Added " + getSender().path().name() + " as a child";
+        // CustomPrint.infoPrint(classString, type_of_cache.toString()+" ", String.valueOf(id), log_msg);
+        log.info("[{} CACHE {}] " + log_msg, this.type_of_cache.toString(), String.valueOf(this.id));
     }
 }

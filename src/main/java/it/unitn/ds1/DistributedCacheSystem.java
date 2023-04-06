@@ -54,9 +54,11 @@ public class DistributedCacheSystem {
 
     public void buildCustomSystem(){
         this.system = ActorSystem.create("distributed_cache_system");
+        this.system.logConfiguration();
         System.out.println("Custom system creation!");
         // Build database
-        this.databaseActor = system.actorOf(Database.props(0, configuration.getDatabase().getTimeouts()));
+        this.databaseActor = system.actorOf(Database.props(0, configuration.getDatabase().getTimeouts()),
+                "database");
 
         // Build L1 caches up to maxNum
 
@@ -66,7 +68,8 @@ public class DistributedCacheSystem {
             this.l1CacheActors.add(system.actorOf(Cache.props(i,
                     "L1",
                     databaseActor,
-                    configuration.getL1Caches().getTimeouts())));
+                    configuration.getL1Caches().getTimeouts()),
+                    "l1_cache_"+String.valueOf(i)));
         }
 
         // Build L2 caches up to maxNum for each L1 cache
@@ -91,7 +94,8 @@ public class DistributedCacheSystem {
                         "L2",
                         l1Cache,
                         databaseActor,
-                        configuration.getL2Caches().getTimeouts())));
+                        configuration.getL2Caches().getTimeouts()),
+                        "l2_cache_"+String.valueOf(i+totalL2Caches)));
             }
             totalL2Caches += l2Num;
         }
@@ -118,7 +122,8 @@ public class DistributedCacheSystem {
                 this.clientActors.add(system.actorOf(Client.props(i+totalClients,
                         l2Cache,
                         configuration.getClients().getTimeouts(),
-                        l2CacheActors)));
+                        l2CacheActors),
+                        "client_"+String.valueOf(i+totalClients)));
             }
             totalClients += clientNum;
         }
@@ -134,7 +139,8 @@ public class DistributedCacheSystem {
         this.system = ActorSystem.create("distributed_cache_system");
 
         // Build database
-        this.databaseActor = system.actorOf(Database.props(0, configuration.getDatabase().getTimeouts()));
+        this.databaseActor = system.actorOf(Database.props(0, configuration.getDatabase().getTimeouts()),
+                "database");
 
         // Build L1 caches up to maxNum
         int l1_num;
@@ -149,7 +155,8 @@ public class DistributedCacheSystem {
             this.l1CacheActors.add(system.actorOf(Cache.props(i,
                     "L1",
                     databaseActor,
-                    configuration.getL1Caches().getTimeouts())));
+                    configuration.getL1Caches().getTimeouts()),
+                    "l1_cache_"+String.valueOf(i)));;
         }
 
         // Build L2 caches up to maxNum for each L1 cache
@@ -172,7 +179,8 @@ public class DistributedCacheSystem {
                         "L2",
                         l1Cache,
                         databaseActor,
-                        configuration.getL2Caches().getTimeouts())));
+                        configuration.getL2Caches().getTimeouts()),
+                        "l2_cache_"+String.valueOf(i+total_l2_caches)));
             }
             total_l2_caches += l2_num;
         }
@@ -196,11 +204,13 @@ public class DistributedCacheSystem {
                 this.clientActors.add(system.actorOf(Client.props(i+total_clients,
                         l2Cache,
                         configuration.getClients().getTimeouts(),
-                        l2CacheActors)));
+                        l2CacheActors),
+                        "client_"+String.valueOf(i+total_clients)));
             }
             total_clients += client_num;
         }
-        this.master = system.actorOf(Master.props(this.l1CacheActors, this.l2CacheActors, this.clientActors), "master");
+        this.master = system.actorOf(Master.props(this.l1CacheActors, this.l2CacheActors, this.clientActors),
+                "master");
     }
 
     public void buildSystem(){
@@ -258,19 +268,17 @@ public class DistributedCacheSystem {
         distributedCacheSystem.buildSystem();
         System.out.println("System built!");
         distributedCacheSystem.init();
-        sleep(2000);
         distributedCacheSystem.sendWriteMsgs();
         distributedCacheSystem.databaseActor.tell(new Message.CurrentDataMsg(), ActorRef.noSender());
+        try {
+            sleep(2000);
+            System.out.println(">>> Press ENTER to exit <<<");
+            System.in.read();
+        }
+        catch (IOException ioe) {} catch (InterruptedException e) {
+            e.printStackTrace();
+        }
         distributedCacheSystem.system.terminate();
-//        try {
-//            sleep(2000);
-//            System.out.println(">>> Press ENTER to exit <<<");
-//            System.in.read();
-//        }
-//        catch (IOException ioe) {} catch (InterruptedException e) {
-//            e.printStackTrace();
-//        }
-//        system.terminate();
 
     }
 

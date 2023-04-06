@@ -1,17 +1,19 @@
 package it.unitn.ds1;
 
 import akka.actor.AbstractActor;
+import akka.actor.AbstractLoggingActor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
-import scala.concurrent.Await;
-import akka.util.Timeout;
-import akka.pattern.*;
-import scala.concurrent.duration.*;
+import akka.event.Logging;
+import akka.event.LoggingAdapter;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+
+import static akka.pattern.Patterns.*;
 
 public class Client extends AbstractActor {
-
+    private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
     private int id;
 
     //DEBUG ONLY: assumption that clients are always up
@@ -81,7 +83,8 @@ public class Client extends AbstractActor {
     /*-- Actor logic -- */
 
     public void preStart() {
-        CustomPrint.print(classString,"", String.valueOf(this.id), " Started!");
+        // CustomPrint.infoPrint(classString,"", String.valueOf(this.id), " Started!");
+        log.info("[CLIENT " + id + "] Started!");
     }
 
     // ----------SEND LOGIC----------
@@ -95,8 +98,8 @@ public class Client extends AbstractActor {
         path.push(getSelf());
         Message.WriteMsg msg = new Message.WriteMsg(key, value, path);
         parent.tell(msg, getSelf());
-        CustomPrint.print(classString,"", String.valueOf(this.id), " Sent write msg!");
-
+        // CustomPrint.infoPrint(classString,"", String.valueOf(this.id), " Sent write msg!");
+        log.debug("[CLIENT " + id + "] Sent write msg!");
     }
 
     // ----------RECEIVE LOGIC----------
@@ -108,22 +111,25 @@ public class Client extends AbstractActor {
                 .match(Message.StartInitMsg.class, this::onStartInitMsg)
                 .match(Message.StartWriteMsg.class, this::onStartWriteMsg)
                 .match(Message.WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
-                .matchAny(o -> System.out.println("Client " + id +" received unknown message from " + getSender()))
+                .matchAny(o -> log.info("[CLIENT " + id + "] received unknown message from " +
+                        getSender().path().name()))
                 .build();
     }
 
     private void onStartInitMsg(Message.StartInitMsg msg) {
-        CustomPrint.print(classString,"", String.valueOf(this.id), " Received initialization msg!");
+        // CustomPrint.infoPrint(classString,"", String.valueOf(this.id), " Received initialization msg!");
+        log.info("[CLIENT " + id + "] Received initialization msg!");
         sendInitMsg();
     }
 
     // ----------WRITE MESSAGES LOGIC----------
     private void onStartWriteMsg(Message.StartWriteMsg msg) {
-        CustomPrint.print(classString,"", String.valueOf(this.id), " Received write msg!");
+        // CustomPrint.infoPrint(classString,"", String.valueOf(this.id), " Received write msg!");
+        log.info("[CLIENT " + id + "] Received write msg!");
         sendWriteMsg(msg.key, msg.value);
     }
 
     private void onWriteConfirmationMsg(Message.WriteConfirmationMsg msg) {
-        CustomPrint.print(classString,"", String.valueOf(this.id), " Received write confirmation msg!");
-    }
+        // CustomPrint.infoPrint(classString,"", String.valueOf(this.id), " Received write confirmation msg!");
+        log.info("[CLIENT " + id + "] Received write confirmation msg!");    }
 }

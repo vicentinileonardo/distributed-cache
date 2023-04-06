@@ -9,6 +9,8 @@ import java.util.List;
 
 public class Master extends AbstractActor {
 
+    private String classString = String.valueOf(getClass());
+
     private HashSet<ActorRef> l1CacheActors;
     private HashSet<ActorRef> l2CacheActors;
     private HashSet<ActorRef> clientActors;
@@ -19,7 +21,7 @@ public class Master extends AbstractActor {
         setL1CacheActors(l1CacheActors);
         setL2CacheActors(l2CacheActors);
         setClientActors(clientActors);
-        System.out.println("Master initialized");
+        CustomPrint.infoPrint(classString, "", "", "Initialized!");
     }
 
     static public Props props(HashSet<ActorRef> l1CacheActors,
