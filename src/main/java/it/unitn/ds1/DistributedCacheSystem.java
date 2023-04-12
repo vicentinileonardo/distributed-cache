@@ -247,18 +247,18 @@ public class DistributedCacheSystem {
         ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
 
         // generate a random number
-        Random rndm = new Random();
+        Random rnd = new Random();
 
         // this will generate a random number between 0 and
         // HashSet.size - 1
-        int rndmNumber = rndm.nextInt(this.clientActors.size());
-        ActorRef client = tmpArray[rndmNumber];
+        int rndNumber = rnd.nextInt(this.clientActors.size());
+        ActorRef client = tmpArray[rndNumber];
         Message.StartWriteMsg msg = new Message.StartWriteMsg(0, 10);
         client.tell(msg, ActorRef.noSender());
     }
 
-    public static void main(String[] args) throws IOException, InterruptedException {
-
+    public static void main(String[] args) throws IOException {
+        // System.setOut(new PrintStream(new BufferedOutputStream(new FileOutputStream("logs/log.txt"))));
         DistributedCacheSystem distributedCacheSystem = new DistributedCacheSystem("config.yaml");
         String configFilePath = System.getProperty("user.dir") + distributedCacheSystem.config_file;
 
@@ -269,16 +269,16 @@ public class DistributedCacheSystem {
         System.out.println("System built!");
         distributedCacheSystem.init();
         distributedCacheSystem.sendWriteMsgs();
-        distributedCacheSystem.databaseActor.tell(new Message.CurrentDataMsg(), ActorRef.noSender());
-        try {
-            sleep(2000);
-            System.out.println(">>> Press ENTER to exit <<<");
-            System.in.read();
-        }
-        catch (IOException ioe) {} catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-        distributedCacheSystem.system.terminate();
+        // distributedCacheSystem.databaseActor.tell(new Message.CurrentDataMsg(), ActorRef.noSender());
+//        try {
+//            sleep(2000);
+//            System.out.println(">>> Press ENTER to exit <<<");
+//            System.in.read();
+//        }
+//        catch (IOException ioe) {} catch (InterruptedException e) {
+//            e.printStackTrace();
+//        }
+       distributedCacheSystem.system.terminate();
 
     }
 

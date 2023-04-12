@@ -3,9 +3,11 @@ package it.unitn.ds1;
 import akka.actor.*;
 
 import java.util.*;
+import java.util.concurrent.CompletionStage;
 
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
+import akka.pattern.StatusReply;
 import it.unitn.ds1.Message.*;
 
 public class Database extends AbstractActor {
@@ -125,15 +127,13 @@ public class Database extends AbstractActor {
 
     private void sendWriteConfirmation(WriteMsg msg, Set<ActorRef> caches) {
         for (ActorRef cache : caches) {
-            if (!cache.equals(getSender())){
-                log.debug("[DATABASE] Sending fill message to " + cache.path().name());
-                // CustomPrint.debugPrint(classString, "",""," Send Fill to " + cache);
-                cache.tell(new FillMsg(msg.key, msg.value), getSelf());
-            } else {
+            if (cache.equals(msg.path.get(msg.path.size() - 1))) {
                 msg.path.pop();
-                cache.tell(new WriteConfirmationMsg(msg.key, msg.value, msg.path), getSelf());
+                getSender().tell(new Status.Success(msg), self());
                 log.debug("[DATABASE] Sending write confirmation to " + cache.path().name());
-
+            } else {
+                cache.tell(new FillMsg(msg.key, msg.value), getSelf());
+                log.debug("[DATABASE] Sending fill message to " + cache.path().name());
             }
         }
     }
@@ -159,7 +159,7 @@ public class Database extends AbstractActor {
             throw new InvalidMessageException("Message to wrong destination!");
         }
         addL1_cache(msg.id);
-        log.info("[DATABASE] Added L1 cache {} as a child!", getSender().path().name());
+        // log.info("[DATABASE] Added L1 cache {} as a child!", getSender().path().name());
     }
 
     // ----------READ MESSAGES LOGIC----------
@@ -182,12 +182,10 @@ public class Database extends AbstractActor {
     public void onWriteMsg(WriteMsg msg) {
         log.debug("[DATABASE] Received write request for key {} with value {} from {}",
                 msg.key, msg.value, getSender().path().name());
-
         data.put(msg.key, msg.value);
 
         log.debug("[DATABASE] Wrote value {} for key {}", msg.value, msg.key);
         // notify all L1 caches
-
         log.info("[DATABASE] Send write confirmation to L1 caches");
         sendWriteConfirmation(msg, L1_caches);
 

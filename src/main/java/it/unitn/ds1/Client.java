@@ -6,9 +6,18 @@ import akka.actor.ActorRef;
 import akka.actor.Props;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
+import akka.pattern.Patterns;
+import akka.pattern.PipeToSupport;
+import akka.util.Timeout;
+import scala.concurrent.Await;
+import scala.concurrent.Awaitable;
+import scala.concurrent.ExecutionContext;
 
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.Future;
 
 import static akka.pattern.Patterns.*;
 
@@ -84,7 +93,7 @@ public class Client extends AbstractActor {
 
     public void preStart() {
         // CustomPrint.infoPrint(classString,"", String.valueOf(this.id), " Started!");
-        log.info("[CLIENT " + id + "] Started!");
+        // log.info("[CLIENT " + id + "] Started!");
     }
 
     // ----------SEND LOGIC----------
@@ -93,15 +102,25 @@ public class Client extends AbstractActor {
         parent.tell(msg, getSelf());
     }
 
-    public void sendWriteMsg(int key, int value){
+    public void sendWriteMsg(int key, int value) {
         Stack<ActorRef> path = new Stack<>();
         path.push(getSelf());
         Message.WriteMsg msg = new Message.WriteMsg(key, value, path);
-        parent.tell(msg, getSelf());
-        // CustomPrint.infoPrint(classString,"", String.valueOf(this.id), " Sent write msg!");
+        // parent.tell(msg, getSelf());
+        Duration timeout = Duration.ofSeconds(getTimeout("write"));
+        CompletableFuture<Object> future = ask(parent, msg, timeout).toCompletableFuture();
         log.debug("[CLIENT " + id + "] Sent write msg!");
-    }
+        pipe(future, getContext().dispatcher()).to(getSelf());
+        future.whenComplete((o, e) -> {
+            if (e != null){
+                throw new RuntimeException(e);
+            } else{
+                Message.WriteMsg resMsg = (Message.WriteMsg) o;
+                log.debug("[CLIENT " + id + "] Written new value {} for key {}", resMsg.value, resMsg.key);
+            }
+            });
 
+    }
     // ----------RECEIVE LOGIC----------
 
     // Here we define the mapping between the received message types and the database methods
@@ -110,15 +129,15 @@ public class Client extends AbstractActor {
         return receiveBuilder()
                 .match(Message.StartInitMsg.class, this::onStartInitMsg)
                 .match(Message.StartWriteMsg.class, this::onStartWriteMsg)
-                .match(Message.WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
+                // .match(Message.WriteMsg.class, this::onWriteConfirmationMsg)
                 .matchAny(o -> log.info("[CLIENT " + id + "] received unknown message from " +
-                        getSender().path().name()))
+                        getSender().path().name() + ": " + o))
                 .build();
     }
 
     private void onStartInitMsg(Message.StartInitMsg msg) {
         // CustomPrint.infoPrint(classString,"", String.valueOf(this.id), " Received initialization msg!");
-        log.info("[CLIENT " + id + "] Received initialization msg!");
+        // log.info("[CLIENT " + id + "] Received initialization msg!");
         sendInitMsg();
     }
 
@@ -129,7 +148,9 @@ public class Client extends AbstractActor {
         sendWriteMsg(msg.key, msg.value);
     }
 
-    private void onWriteConfirmationMsg(Message.WriteConfirmationMsg msg) {
+    private void onWriteConfirmationMsg(Message.WriteMsg msg) {
+        log.info("[CLIENT {}] Received Message containing key {} and value {}", id, msg.key, msg.value);
+    }
         // CustomPrint.infoPrint(classString,"", String.valueOf(this.id), " Received write confirmation msg!");
-        log.info("[CLIENT " + id + "] Received write confirmation msg!");    }
+        // log.info("[CLIENT " + id + "] Received write confirmation msg!");    }
 }

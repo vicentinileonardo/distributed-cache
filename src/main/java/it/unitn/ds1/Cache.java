@@ -1,14 +1,17 @@
 package it.unitn.ds1;
 
-import akka.actor.ActorRef;
-import akka.actor.AbstractActor;
-import akka.actor.InvalidMessageException;
-import akka.actor.Props;
+import akka.actor.*;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
 
 import java.io.IOException;
+import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+
+import static akka.pattern.Patterns.ask;
+import static akka.pattern.Patterns.pipe;
+import static java.lang.Thread.sleep;
 
 public class Cache extends AbstractActor{
 
@@ -55,7 +58,7 @@ public class Cache extends AbstractActor{
         }
         setTimeouts(timeouts);
 
-        log.info("[{} CACHE {}] Cache initialized!", this.type_of_cache.toString(), String.valueOf(this.id));
+        // log.info("[{} CACHE {}] Cache initialized!", this.type_of_cache.toString(), String.valueOf(this.id));
     }
 
     public Cache(int id,
@@ -78,7 +81,7 @@ public class Cache extends AbstractActor{
         this.database = database;
         setTimeouts(timeouts);
 
-        log.info("[{} CACHE {}] Cache initialized!", this.type_of_cache.toString(), String.valueOf(this.id));
+        // log.info("[{} CACHE {}] Cache initialized!", this.type_of_cache.toString(), String.valueOf(this.id));
     }
 
     static public Props props(int id, String type, ActorRef parent, List<TimeoutConfiguration> timeouts) {
@@ -91,15 +94,20 @@ public class Cache extends AbstractActor{
 
     // ----------CRASHING LOGIC----------
 
-    public void crash() throws IOException {
+    public void crash() {
         this.crashed = true;
         clearData();
         log.info("[{} CACHE {}] Cache crashed!", this.type_of_cache.toString(), String.valueOf(this.id));
-        // CustomPrint.infoPrint(classString, this.type_of_cache.toString(), String.valueOf(this.id), " Crashed!");
     }
 
     public boolean isCrashed(){
         return this.crashed;
+    }
+
+    public void recover() {
+        this.crashed = false;
+        log.info("[{} CACHE {}] Recovery process started!",
+                this.type_of_cache.toString(), String.valueOf(this.id));
     }
 
     //----------DATA LOGIC----------
@@ -185,8 +193,7 @@ public class Cache extends AbstractActor{
 
     public void preStart() {
 
-        // CustomPrint.infoPrint(classString, type_of_cache.toString()+" ", String.valueOf(id), " Started!");
-        log.info("[{} CACHE {}] Cache started!", this.type_of_cache.toString(), String.valueOf(this.id));
+        // log.info("[{} CACHE {}] Cache started!", this.type_of_cache.toString(), String.valueOf(this.id));
 
     }
 
@@ -213,8 +220,10 @@ public class Cache extends AbstractActor{
                 .match(Message.WriteMsg.class, this::onWriteMsg)
                 .match(Message.WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
                 .match(Message.FillMsg.class, this::onFillMsg)
-                .matchAny(o -> log.info("[{} CACHE {}] Received unknown message from {}!",
-                        this.type_of_cache.toString(), String.valueOf(this.id), getSender().path().name()))
+                .match(Message.CrashMsg.class, this::onCrashMsg)
+                .match(Message.RecoverMsg.class, this::onRecoverMsg)
+                .matchAny(o -> log.info("[{} CACHE {}] Received unknown message from {} {}!",
+                        this.type_of_cache.toString(), String.valueOf(this.id), getSender().path().name(), o.getClass().getName()))
                 .build();
     }
 
@@ -236,10 +245,24 @@ public class Cache extends AbstractActor{
     private void onWriteMsg(Message.WriteMsg msg){
         if(!isCrashed()) {
             msg.path.push(getSelf());
-            parent.tell(msg, getSelf());
-
-            log.info("[{} CACHE {}] Sent write msg to {}!",
-                    this.type_of_cache.toString(), String.valueOf(this.id), this.parent.path().name());
+            // parent.tell(msg, getSelf());
+            Duration timeout = Duration.ofSeconds(getTimeout("write"));
+            try{
+                CompletableFuture<Object> future = ask(parent, msg, timeout).toCompletableFuture();
+                log.info("[{} CACHE {}] Sent write msg to {}!",
+                        this.type_of_cache.toString(), String.valueOf(this.id), this.parent.path().name());
+                future.whenComplete((o, T) -> {
+                    Message.WriteMsg response = (Message.WriteMsg) o;
+                        log.info("[" + this.type_of_cache + " CACHE " + id + "] Received write confirmation!");
+                        if (isDataPresent(response.key)) {
+                            addData(response.key, response.value);
+                        }
+                });
+                pipe(future, context().dispatcher()).to(getSender());
+            } catch (Exception e) {
+                getSender().tell(new Status.Failure(e), getSelf());
+                throw e;
+            }
         }
     }
 
@@ -248,8 +271,6 @@ public class Cache extends AbstractActor{
             if (this.data.containsKey(msg.key)){
                 this.data.put(msg.key, msg.value);
             }
-            log.debug("[{} CACHE {}] Data: {}",
-                    this.type_of_cache.toString(), String.valueOf(this.id), data.toString());
             for (ActorRef child : this.children){
                 Message.FillMsg fillMsg = new Message.FillMsg(msg.key, msg.value);
                 if (child.path().name().contains("cache")){
@@ -270,7 +291,31 @@ public class Cache extends AbstractActor{
 
         addChild(msg.id);
         String log_msg = " Added " + getSender().path().name() + " as a child";
-        // CustomPrint.infoPrint(classString, type_of_cache.toString()+" ", String.valueOf(id), log_msg);
-        log.info("[{} CACHE {}] " + log_msg, this.type_of_cache.toString(), String.valueOf(this.id));
+        // log.info("[{} CACHE {}] " + log_msg, this.type_of_cache.toString(), String.valueOf(this.id));
+    }
+
+    // ----------CRASH MESSAGES LOGIC----------
+    private void onCrashMsg(Message.CrashMsg msg){
+        if (!isCrashed()){
+            crash();
+        }
+    }
+
+    HashSet<Integer> recoveredKeys = new HashSet<>();
+    HashMap<ActorRef, Integer> recoveredValuesForChild = new HashMap<>();
+    HashSet<ActorRef> childrenToRecover = new HashSet<>();
+
+    private void onRecoverMsg(Message.RecoverMsg msg){
+        if (isCrashed()){
+            recover();
+            // L2 caches does not need to be repopulated with data from before crash
+            // they will repopulate with data coming from new reads
+            if (this.type_of_cache == TYPE.L1){
+                // todo: ask for data for all children
+                // todo: ask data to parent/database (read/crit read)
+                // todo: populate data
+            }
+
+        }
     }
 }

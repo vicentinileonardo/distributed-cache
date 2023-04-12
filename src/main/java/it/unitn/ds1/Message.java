@@ -4,6 +4,7 @@ import akka.actor.Actor;
 import akka.actor.ActorRef;
 
 import java.io.Serializable;
+import java.util.HashMap;
 import java.util.Stack;
 
 public class Message {
@@ -22,6 +23,15 @@ public class Message {
     public static class StartInitMsg implements Serializable{
         public StartInitMsg() {
         }
+    }
+
+    // ----------CRASH RELATED MESSAGES----------
+    public static class CrashMsg implements Serializable{
+        public CrashMsg() {}
+    }
+
+    public static class RecoverMsg implements Serializable{
+        public RecoverMsg() {}
     }
 
     // ----------DATABASE GENERAL MESSAGES----------
