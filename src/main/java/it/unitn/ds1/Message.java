@@ -25,6 +25,12 @@ public class Message {
         }
     }
 
+    public static class TimeoutMsg implements Serializable{
+        public TimeoutMsg() {
+
+        }
+    }
+
     // ----------CRASH RELATED MESSAGES----------
     public static class CrashMsg implements Serializable{
         public CrashMsg() {}

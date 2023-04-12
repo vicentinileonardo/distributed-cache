@@ -10,6 +10,8 @@ import akka.event.LoggingAdapter;
 import akka.pattern.StatusReply;
 import it.unitn.ds1.Message.*;
 
+import static java.lang.Thread.sleep;
+
 public class Database extends AbstractActor {
 
     private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
@@ -129,7 +131,7 @@ public class Database extends AbstractActor {
         for (ActorRef cache : caches) {
             if (cache.equals(msg.path.get(msg.path.size() - 1))) {
                 msg.path.pop();
-                getSender().tell(new Status.Success(msg), self());
+                cache.tell(new Message.WriteConfirmationMsg(msg.key, msg.value, msg.path), getSelf());
                 log.debug("[DATABASE] Sending write confirmation to " + cache.path().name());
             } else {
                 cache.tell(new FillMsg(msg.key, msg.value), getSelf());
@@ -167,23 +169,13 @@ public class Database extends AbstractActor {
         log.debug("[DATABASE] Received read request for key {} from {}", msg.key, getSender().path().name());
         int value = data.get(msg.key);
         log.debug("[DATABASE] Read value {} for key {}", value, msg.key);
-        /*
-        ReadConfirmationMsg readConfirmationMsg = new ReadConfirmationMsg(msg.key, value, msg.clientID);
-        for (ActorRef cache : L2_caches) {
-            cache.tell(readConfirmationMsg, getSelf());
-        }
-        for (ActorRef cache : L1_caches) {
-            cache.tell(readConfirmationMsg, getSelf());
-        }
-        */
     }
 
     // ----------WRITE MESSAGES LOGIC----------
-    public void onWriteMsg(WriteMsg msg) {
+    public void onWriteMsg(WriteMsg msg) throws InterruptedException {
         log.debug("[DATABASE] Received write request for key {} with value {} from {}",
                 msg.key, msg.value, getSender().path().name());
         data.put(msg.key, msg.value);
-
         log.debug("[DATABASE] Wrote value {} for key {}", msg.value, msg.key);
         // notify all L1 caches
         log.info("[DATABASE] Send write confirmation to L1 caches");

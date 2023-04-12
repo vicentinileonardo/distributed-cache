@@ -269,16 +269,16 @@ public class DistributedCacheSystem {
         System.out.println("System built!");
         distributedCacheSystem.init();
         distributedCacheSystem.sendWriteMsgs();
-        // distributedCacheSystem.databaseActor.tell(new Message.CurrentDataMsg(), ActorRef.noSender());
-//        try {
-//            sleep(2000);
-//            System.out.println(">>> Press ENTER to exit <<<");
-//            System.in.read();
-//        }
-//        catch (IOException ioe) {} catch (InterruptedException e) {
-//            e.printStackTrace();
-//        }
-       distributedCacheSystem.system.terminate();
+        try {
+            sleep(2000);
+            System.out.println(">>> Press ENTER to exit <<<");
+            System.in.read();
+        }
+        catch (IOException ioe) {} catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        distributedCacheSystem.databaseActor.tell(new Message.CurrentDataMsg(), ActorRef.noSender());
+        distributedCacheSystem.system.terminate();
 
     }
 
