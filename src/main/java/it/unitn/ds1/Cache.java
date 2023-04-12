@@ -3,16 +3,14 @@ package it.unitn.ds1;
 import akka.actor.*;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
+import akka.japi.Pair;
 import scala.concurrent.duration.Duration;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
-import static akka.pattern.Patterns.ask;
-import static akka.pattern.Patterns.pipe;
-import static java.lang.Thread.sleep;
+import it.unitn.ds1.Message.*;
 
 public class Cache extends AbstractActor{
 
@@ -22,10 +20,15 @@ public class Cache extends AbstractActor{
     //DEBUG ONLY: assumption that the cache is always up
     private boolean crashed = false;
     private boolean responded = false;
+    private ActorRef sender = null;
+    private Map.Entry<ActorRef, Boolean> response = new AbstractMap.SimpleEntry<>(null, false);
     private final TYPE type_of_cache;
 
     private Map<Integer, Integer> data = new HashMap<>();
 
+    HashSet<Integer> recoveredKeys = new HashSet<>();
+    HashMap<ActorRef, Map<Integer, Integer>> recoveredValuesForChild = new HashMap<>();
+    HashSet<ActorRef> childrenToRecover = new HashSet<>();
     // since we use the same class for both types of cache
     // we don't distinguish between different types of children
     // (clients for L2 cache, L2 cache for L1 cache), same for the parent
@@ -45,7 +48,7 @@ public class Cache extends AbstractActor{
     public Cache(int id,
                  String type,
                  ActorRef parent,
-                 List<TimeoutConfiguration> timeouts) throws IOException {
+                 List<TimeoutConfiguration> timeouts) {
 
         this.id = id;
         this.parent = parent;
@@ -67,7 +70,7 @@ public class Cache extends AbstractActor{
                  String type,
                  ActorRef parent,
                  ActorRef database,
-                 List<TimeoutConfiguration> timeouts) throws IOException {
+                 List<TimeoutConfiguration> timeouts) {
 
         this.id = id;
 
@@ -191,11 +194,13 @@ public class Cache extends AbstractActor{
         this.timeouts.put(type, value);
     }
 
-    public boolean hasResponded(){ return this.responded;}
+    public boolean hasResponded(){ return this.response.getValue();}
 
-    public void sendRequest(){this.responded = false;}
+    public void sendRequest(ActorRef sender){
+        this.response = new AbstractMap.SimpleEntry<>(sender, false);
+    }
 
-    public void receivedResponse(){this.responded = true;}
+    public void receivedResponse(){this.response = new AbstractMap.SimpleEntry<>(null, true);}
 
     private void waitSomeTime(int time){
 
@@ -213,12 +218,12 @@ public class Cache extends AbstractActor{
 
     // ----------SEND LOGIC----------
 
-    private void onStartInitMsg(Message.StartInitMsg msg){
+    private void onStartInitMsg(StartInitMsg msg){
         sendInitMsg();
     }
 
     private void sendInitMsg(){
-        Message.InitMsg msg = new Message.InitMsg(getSelf(), this.type_of_cache.toString());
+        InitMsg msg = new InitMsg(getSelf(), this.type_of_cache.toString());
         parent.tell(msg, getSelf());
 
     }
@@ -229,30 +234,44 @@ public class Cache extends AbstractActor{
     @Override
     public Receive createReceive() {
         return receiveBuilder()
-                .match(Message.StartInitMsg.class, this::onStartInitMsg)
-                .match(Message.InitMsg.class, this::onInitMsg)
-                .match(Message.WriteMsg.class, this::onWriteMsg)
-                .match(Message.WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
-                .match(Message.FillMsg.class, this::onFillMsg)
-                .match(Message.CrashMsg.class, this::onCrashMsg)
-                .match(Message.RecoverMsg.class, this::onRecoverMsg)
-                .match(Message.TimeoutMsg.class, this::onTimeoutMsg)
+                .match(StartInitMsg.class, this::onStartInitMsg)
+                .match(InitMsg.class, this::onInitMsg)
+                .match(WriteMsg.class, this::onWriteMsg)
+                .match(WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
+                .match(FillMsg.class, this::onFillMsg)
+                .match(CrashMsg.class, this::onCrashMsg)
+                .match(RecoverMsg.class, this::onRecoverMsg)
+                .match(TimeoutMsg.class, this::onTimeoutMsg)
+                .match(ResponseDataRecoverMsg.class, this::onResponseDataRecoverMsg)
+                .match(RequestDataRecoverMsg.class, this::onRequestDataRecoverMsg)
+                .match(ResponseUpdatedDataMsg.class, this::onResponseUpdatedDataMsg)
+                .match(UpdateDataMsg.class, this::onUpdateDataMsg)
+                .match(RequestConnectionMsg.class, this::onRequestConnectionMsg)
                 .matchAny(o -> log.info("[{} CACHE {}] Received unknown message from {} {}!",
                         this.type_of_cache.toString(), String.valueOf(this.id), getSender().path().name(), o.getClass().getName()))
                 .build();
     }
 
     // ----------TIMEOUT MESSAGE LOGIC----------
-    private void onTimeoutMsg(Message.TimeoutMsg msg) {
+    private void onTimeoutMsg(TimeoutMsg msg) {
         if (!hasResponded()) {
             log.info("[{} CACHE {}] Received timeout msg from {}!",
                     this.type_of_cache, this.id, getSender().path().name());
             receivedResponse();
+            log.info("[{} CACHE {}] Connecting to DATABASE",
+                    this.type_of_cache.toString(), String.valueOf(this.id));
+            this.parent = this.database;
+            this.parent.tell(new RequestConnectionMsg("L2"), getSelf());
+            this.response.getKey().tell(new TimeoutElapsedMsg(), getSelf());
         }
     }
 
+    private void onRequestConnectionMsg(RequestConnectionMsg msg){
+        addChild(getSender());
+    }
+
     // ----------WRITE MESSAGES LOGIC----------
-    private void onWriteConfirmationMsg(Message.WriteConfirmationMsg msg){
+    private void onWriteConfirmationMsg(WriteConfirmationMsg msg){
         if (!isCrashed()) {
             if (!hasResponded()) {
                 waitSomeTime(15);
@@ -263,7 +282,7 @@ public class Cache extends AbstractActor{
                 if (type_of_cache == TYPE.L1) {
                     for (ActorRef child : getChildren()) {
                         if (!child.equals(destination)) {
-                            child.tell(new Message.FillMsg(msg.key, msg.value), getSelf());
+                            child.tell(new FillMsg(msg.key, msg.value), getSelf());
                         }
                     }
                 }
@@ -280,74 +299,104 @@ public class Cache extends AbstractActor{
         }
     }
 
-    private void onWriteMsg(Message.WriteMsg msg){
+    private void onWriteMsg(WriteMsg msg){
         if(!isCrashed()) {
             msg.path.push(getSelf());
             parent.tell(msg, getSelf());
-            sendRequest();
+            sendRequest(getSender());
             getContext().getSystem().getScheduler().scheduleOnce(
                     Duration.create(timeouts.get("write")*1000, TimeUnit.MILLISECONDS),
                     getSelf(),
-                    new Message.TimeoutMsg(), // the message to send
+                    new TimeoutMsg(), // the message to send
                     getContext().system().dispatcher(),
                     getSelf()
             );
         }
     }
 
-    private void onFillMsg(Message.FillMsg msg){
+    private void onFillMsg(FillMsg msg){
         if(!isCrashed()){
             if (this.data.containsKey(msg.key)){
                 this.data.put(msg.key, msg.value);
             }
             for (ActorRef child : this.children){
-                Message.FillMsg fillMsg = new Message.FillMsg(msg.key, msg.value);
+                FillMsg fillMsg = new FillMsg(msg.key, msg.value);
                 if (child.path().name().contains("cache")){
-                    child.tell(fillMsg, getSelf());
-                    // log.info("[{} CACHE {}] Sent fill msg to {}!",
-                    //         this.type_of_cache.toString(), String.valueOf(this.id), child.path().name());
-                }
+                    child.tell(fillMsg, getSelf());}
             }
         }
     }
 
     // ----------INITIALIZATION MESSAGES LOGIC----------
-    private void onInitMsg(Message.InitMsg msg) throws InvalidMessageException{
+    private void onInitMsg(InitMsg msg) throws InvalidMessageException{
         if ((this.type_of_cache == TYPE.L1 && !Objects.equals(msg.type, "L2")) ||
                 (this.type_of_cache == TYPE.L2 && !Objects.equals(msg.type, "client"))){
             throw new InvalidMessageException("Message to wrong destination!");
         }
 
         addChild(msg.id);
-        String log_msg = " Added " + getSender().path().name() + " as a child";
-        // log.info("[{} CACHE {}] " + log_msg, this.type_of_cache.toString(), String.valueOf(this.id));
     }
 
     // ----------CRASH MESSAGES LOGIC----------
-    private void onCrashMsg(Message.CrashMsg msg){
+    private void onCrashMsg(CrashMsg msg){
         if (!isCrashed()){
             crash();
         }
     }
 
-    HashSet<Integer> recoveredKeys = new HashSet<>();
-    HashMap<ActorRef, HashMap<Integer, Integer>> recoveredValuesForChild = new HashMap<>();
-    HashSet<ActorRef> childrenToRecover = new HashSet<>();
-
-    private void onRecoverMsg(Message.RecoverMsg msg){
+    private void onRecoverMsg(RecoverMsg msg){
         if (isCrashed()){
             recover();
             // L2 caches does not need to be repopulated with data from before crash
             // they will repopulate with data coming from new reads
             if (this.type_of_cache == TYPE.L1){
-                // todo: ask for data for all children
                 for (ActorRef child : getChildren()){
-                    child.tell("", getSelf());
+                    child.tell(new RequestDataRecoverMsg(), getSelf());
+                    childrenToRecover.add(child);
                 }
-                // todo: ask data to parent/database (read/crit read)
-                // todo: populate data
+            }
+        }
+    }
+
+    private void onResponseDataRecoverMsg(ResponseDataRecoverMsg msg){
+        childrenToRecover.remove(getSender());
+        if (msg.parent != getSelf()){
+            children.remove(getSender());
+        }
+
+        recoveredKeys.addAll(msg.data.keySet());
+        recoveredValuesForChild.put(getSender(), msg.data);
+
+        if (childrenToRecover.isEmpty()){
+            parent.tell(new RequestUpdatedDataMsg(recoveredKeys), getSelf());
+        }
+    }
+
+    private void onRequestDataRecoverMsg(RequestDataRecoverMsg msg){
+        getSender().tell(new ResponseDataRecoverMsg(this.data, this.parent), getSelf());
+    }
+
+    private void onResponseUpdatedDataMsg(ResponseUpdatedDataMsg msg){
+        this.data = msg.data;
+
+        for (Map.Entry<ActorRef , Map<Integer, Integer>> entry: this.recoveredValuesForChild.entrySet()){
+            ActorRef child = entry.getKey();
+            Map<Integer, Integer> tmpData = new HashMap<>();
+            for (Map.Entry<Integer, Integer> dataEntry: entry.getValue().entrySet()){
+                int key = dataEntry.getKey();
+                int value = dataEntry.getValue();
+                if (msg.data.get(key) != value){
+                    tmpData.put(key, value);
+                }
             }
 
+            if (!tmpData.isEmpty()) {
+                child.tell(new UpdateDataMsg(tmpData), getSelf());
+            }
         }
+    }
+
+    private void onUpdateDataMsg(UpdateDataMsg msg){
+        this.data.putAll(msg.data);
     }
 }

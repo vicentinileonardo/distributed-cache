@@ -69,13 +69,13 @@ public class DistributedCacheSystem {
                     "L1",
                     databaseActor,
                     configuration.getL1Caches().getTimeouts()),
-                    "l1_cache_"+String.valueOf(i)));
+                    "l1_cache_"+i));
         }
 
         // Build L2 caches up to maxNum for each L1 cache
         this.l2CacheActors = new HashSet<>();
         int totalL2Caches = 0;
-        int l2Num = 0;
+        int l2Num;
         int totalL2Num = configuration.getL2Caches().getCustomNum();
         int l2CachesPerL1Cache = totalL2Num / totalL1Num;
         int l2CacheToSpare = totalL2Num % totalL1Num;
@@ -95,7 +95,7 @@ public class DistributedCacheSystem {
                         l1Cache,
                         databaseActor,
                         configuration.getL2Caches().getTimeouts()),
-                        "l2_cache_"+String.valueOf(i+totalL2Caches)));
+                        "l2_cache_"+(i+totalL2Caches)));
             }
             totalL2Caches += l2Num;
         }
@@ -103,7 +103,7 @@ public class DistributedCacheSystem {
         // Build clients up to maxNum for each L2 cache
         this.clientActors = new HashSet<>();
         int totalClients = 0;
-        int clientNum = 0;
+        int clientNum;
 
         int totalClientsNum = configuration.getClients().getCustomNum();
         int clientsPerL2Cache = totalClientsNum / totalL2Num;
@@ -123,7 +123,7 @@ public class DistributedCacheSystem {
                         l2Cache,
                         configuration.getClients().getTimeouts(),
                         l2CacheActors),
-                        "client_"+String.valueOf(i+totalClients)));
+                        "client_"+(i+totalClients)));
             }
             totalClients += clientNum;
         }
@@ -156,7 +156,7 @@ public class DistributedCacheSystem {
                     "L1",
                     databaseActor,
                     configuration.getL1Caches().getTimeouts()),
-                    "l1_cache_"+String.valueOf(i)));;
+                    "l1_cache_"+i));
         }
 
         // Build L2 caches up to maxNum for each L1 cache
@@ -180,7 +180,7 @@ public class DistributedCacheSystem {
                         l1Cache,
                         databaseActor,
                         configuration.getL2Caches().getTimeouts()),
-                        "l2_cache_"+String.valueOf(i+total_l2_caches)));
+                        "l2_cache_"+(i+total_l2_caches)));
             }
             total_l2_caches += l2_num;
         }
@@ -205,7 +205,7 @@ public class DistributedCacheSystem {
                         l2Cache,
                         configuration.getClients().getTimeouts(),
                         l2CacheActors),
-                        "client_"+String.valueOf(i+total_clients)));
+                        "client_"+(i+total_clients)));
             }
             total_clients += client_num;
         }
@@ -224,19 +224,19 @@ public class DistributedCacheSystem {
     public void init() {
         for (ActorRef client: this.clientActors){
             // send init message to client
-            Message.StartInitMsg msg = new Message.StartInitMsg();
+            StartInitMsg msg = new StartInitMsg();
             client.tell(msg, ActorRef.noSender());
         }
         System.out.println("Clients initialized");
         for (ActorRef l2Cache: this.l2CacheActors){
             // send init message to l1 parent
-            Message.StartInitMsg msg = new Message.StartInitMsg();
+            StartInitMsg msg = new StartInitMsg();
             l2Cache.tell(msg, ActorRef.noSender());
         }
         System.out.println("L2 caches initialized");
         for (ActorRef l1Cache: this.l1CacheActors){
             // send init message to db
-            Message.StartInitMsg msg = new Message.StartInitMsg();
+            StartInitMsg msg = new StartInitMsg();
             l1Cache.tell(msg, ActorRef.noSender());
         }
         System.out.println("L1 caches initialized");
@@ -253,7 +253,7 @@ public class DistributedCacheSystem {
         // HashSet.size - 1
         int rndNumber = rnd.nextInt(this.clientActors.size());
         ActorRef client = tmpArray[rndNumber];
-        Message.StartWriteMsg msg = new Message.StartWriteMsg(0, 10);
+        StartWriteMsg msg = new StartWriteMsg(0, 10);
         client.tell(msg, ActorRef.noSender());
     }
 
@@ -277,7 +277,7 @@ public class DistributedCacheSystem {
         catch (IOException ioe) {} catch (InterruptedException e) {
             e.printStackTrace();
         }
-        distributedCacheSystem.databaseActor.tell(new Message.CurrentDataMsg(), ActorRef.noSender());
+        distributedCacheSystem.databaseActor.tell(new CurrentDataMsg(), ActorRef.noSender());
         distributedCacheSystem.system.terminate();
 
     }

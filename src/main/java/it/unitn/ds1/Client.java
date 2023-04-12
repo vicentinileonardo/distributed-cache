@@ -1,26 +1,16 @@
 package it.unitn.ds1;
 
 import akka.actor.AbstractActor;
-import akka.actor.AbstractLoggingActor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
-import akka.pattern.Patterns;
-import akka.pattern.PipeToSupport;
-import akka.util.Timeout;
-import scala.concurrent.Await;
-import scala.concurrent.Awaitable;
-import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import static akka.pattern.Patterns.*;
+import it.unitn.ds1.Message.*;
 
 public class Client extends AbstractActor {
     private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
@@ -101,20 +91,20 @@ public class Client extends AbstractActor {
 
     // ----------SEND LOGIC----------
     public void sendInitMsg(){
-        Message.InitMsg msg = new Message.InitMsg(getSelf(), "client");
+        InitMsg msg = new InitMsg(getSelf(), "client");
         parent.tell(msg, getSelf());
     }
 
     public void sendWriteMsg(int key, int value) {
         Stack<ActorRef> path = new Stack<>();
         path.push(getSelf());
-        Message.WriteMsg msg = new Message.WriteMsg(key, value, path);
+        WriteMsg msg = new WriteMsg(key, value, path);
         parent.tell(msg, getSelf());
         sendRequest();
         getContext().system().scheduler().scheduleOnce(
                 Duration.create(timeouts.get("write"), TimeUnit.SECONDS),
                 getSelf(),
-                new Message.TimeoutMsg(), // the message to send
+                new TimeoutMsg(), // the message to send
                 getContext().system().dispatcher(), getSelf()
         );
     }
@@ -124,35 +114,56 @@ public class Client extends AbstractActor {
     @Override
     public Receive createReceive() {
         return receiveBuilder()
-                .match(Message.StartInitMsg.class, this::onStartInitMsg)
-                .match(Message.StartWriteMsg.class, this::onStartWriteMsg)
-                .match(Message.TimeoutMsg.class, this::onTimeoutMsg)
-                .match(Message.WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
+                .match(StartInitMsg.class, this::onStartInitMsg)
+                .match(StartWriteMsg.class, this::onStartWriteMsg)
+                .match(TimeoutMsg.class, this::onTimeoutMsg)
+                .match(WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
+                .match(TimeoutElapsedMsg.class, this::onTimeoutElapsedMsg)
                 .matchAny(o -> log.info("[CLIENT " + id + "] received unknown message from " +
                         getSender().path().name() + ": " + o))
                 .build();
     }
 
-    private void onStartInitMsg(Message.StartInitMsg msg) {
+    private void onStartInitMsg(StartInitMsg msg) {
         // log.info("[CLIENT " + id + "] Received initialization msg!");
         sendInitMsg();
     }
 
-    private void onTimeoutMsg(Message.TimeoutMsg msg) {
-        if (!hasResponded()) {
+    private void onTimeoutMsg(TimeoutMsg msg) {
+        if (hasResponded()) {
             log.info("[CLIENT " + id + "] Received timeout msg from {}!", getSender().path().name());
             receivedResponse();
+            log.info("[CLIENT " + id + "] Connecting to another L2 cache");
+            Set<ActorRef> caches = this.getL2_caches();
+            ActorRef[] tmpArray = caches.toArray(new ActorRef[caches.size()]);
+            ActorRef cache = null;
+            while(cache == this.parent || cache == null) {
+                // generate a random number
+                Random rnd = new Random();
+
+                // this will generate a random number between 0 and
+                // HashSet.size - 1
+                int rndNumber = rnd.nextInt(caches.size());
+                cache = tmpArray[rndNumber];
+            }
+            this.parent = cache;
+            parent.tell(new RequestConnectionMsg(), getSelf());
         }
     }
 
+    private void onTimeoutElapsedMsg(TimeoutElapsedMsg msg){
+        log.info("[CLIENT " + id + "] Received timeout msg from {}!", getSender().path().name());
+        receivedResponse();
+    }
+
     // ----------WRITE MESSAGES LOGIC----------
-    private void onStartWriteMsg(Message.StartWriteMsg msg) {
+    private void onStartWriteMsg(StartWriteMsg msg) {
         log.info("[CLIENT " + id + "] Received write msg!");
         sendWriteMsg(msg.key, msg.value);
     }
 
-    private void onWriteConfirmationMsg(Message.WriteConfirmationMsg msg) {
-        if (!hasResponded()) {
+    private void onWriteConfirmationMsg(WriteConfirmationMsg msg) {
+        if (hasResponded()) {
             receivedResponse();
             log.info("[CLIENT {}] Received Message containing key {} and value {}", id, msg.key, msg.value);
         }

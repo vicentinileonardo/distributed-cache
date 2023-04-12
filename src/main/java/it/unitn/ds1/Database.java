@@ -3,14 +3,10 @@ package it.unitn.ds1;
 import akka.actor.*;
 
 import java.util.*;
-import java.util.concurrent.CompletionStage;
 
 import akka.event.Logging;
 import akka.event.LoggingAdapter;
-import akka.pattern.StatusReply;
 import it.unitn.ds1.Message.*;
-
-import static java.lang.Thread.sleep;
 
 public class Database extends AbstractActor {
 
@@ -150,6 +146,8 @@ public class Database extends AbstractActor {
                 .match(DropDatabaseMsg.class, this::onDropDatabaseMsg)
                 .match(ReadRequestMsg.class, this::onReadRequestMsg)
                 .match(WriteMsg.class, this::onWriteMsg)
+                .match(RequestUpdatedDataMsg.class, this::onRequestUpdatedDataMsg)
+                .match(RequestConnectionMsg.class, this::onRequestConnectionMsg)
                 .matchAny(o -> log.info("[DATABASE] Received unknown message from "+ getSender()))
                 .build();
     }
@@ -164,6 +162,16 @@ public class Database extends AbstractActor {
         // log.info("[DATABASE] Added L1 cache {} as a child!", getSender().path().name());
     }
 
+    private void onRequestConnectionMsg(RequestConnectionMsg msg) {
+        if (!msg.type.isEmpty()){
+            if (msg.type.equals("L2")){
+                addL2_cache(getSender());
+            } else {
+                addL1_cache(getSender());
+            }
+        }
+    }
+
     // ----------READ MESSAGES LOGIC----------
     public void onReadRequestMsg(ReadRequestMsg msg) {
         log.debug("[DATABASE] Received read request for key {} from {}", msg.key, getSender().path().name());
@@ -172,7 +180,7 @@ public class Database extends AbstractActor {
     }
 
     // ----------WRITE MESSAGES LOGIC----------
-    public void onWriteMsg(WriteMsg msg) throws InterruptedException {
+    public void onWriteMsg(WriteMsg msg) {
         log.debug("[DATABASE] Received write request for key {} with value {} from {}",
                 msg.key, msg.value, getSender().path().name());
         data.put(msg.key, msg.value);
@@ -187,6 +195,15 @@ public class Database extends AbstractActor {
             sendWriteConfirmation(msg, L2_caches);
         }
 
+    }
+
+    public void onRequestUpdatedDataMsg(RequestUpdatedDataMsg msg){
+        Map<Integer, Integer> tmpData = new HashMap<>();
+        for (Integer key : msg.keys){
+            tmpData.put(key, this.data.get(key));
+        }
+
+        getSender().tell(new ResponseUpdatedDataMsg(tmpData), getSelf());
     }
 
     // ----------GENERAL DATABASE MESSAGES LOGIC----------

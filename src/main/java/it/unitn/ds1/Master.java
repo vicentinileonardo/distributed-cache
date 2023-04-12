@@ -5,7 +5,6 @@ import akka.actor.ActorRef;
 import akka.actor.Props;
 
 import java.util.HashSet;
-import java.util.List;
 
 public class Master extends AbstractActor {
 

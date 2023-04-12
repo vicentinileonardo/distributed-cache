@@ -1,10 +1,10 @@
 package it.unitn.ds1;
 
-import akka.actor.Actor;
 import akka.actor.ActorRef;
 
 import java.io.Serializable;
-import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 import java.util.Stack;
 
 public class Message {
@@ -38,6 +38,57 @@ public class Message {
 
     public static class RecoverMsg implements Serializable{
         public RecoverMsg() {}
+    }
+
+    public static class RequestDataRecoverMsg implements Serializable{
+        public RequestDataRecoverMsg() {}
+    }
+
+    public static class ResponseDataRecoverMsg implements Serializable{
+        public Map<Integer, Integer> data;
+        public ActorRef parent;
+
+        public ResponseDataRecoverMsg(Map<Integer, Integer> data, ActorRef parent) {
+            this.parent = parent;
+            this.data = data;
+        }
+    }
+
+    public static class RequestUpdatedDataMsg implements Serializable{
+        Set<Integer> keys;
+
+        public RequestUpdatedDataMsg(Set<Integer> keys) {
+            this.keys = keys;
+        }
+    }
+
+    public static class ResponseUpdatedDataMsg implements Serializable{
+        Map<Integer, Integer> data;
+
+        public ResponseUpdatedDataMsg(Map<Integer, Integer> data) {
+            this.data = data;
+        }
+    }
+
+    public static class UpdateDataMsg implements Serializable{
+        Map<Integer, Integer> data;
+
+        public UpdateDataMsg(Map<Integer, Integer> data){
+            this.data = data;
+        }
+    }
+
+    public static class RequestConnectionMsg implements Serializable{
+        String type;
+        public RequestConnectionMsg(){}
+
+        public RequestConnectionMsg(String type){
+            this.type = type;
+        }
+    }
+
+    public static class TimeoutElapsedMsg implements Serializable{
+        public TimeoutElapsedMsg(){}
     }
 
     // ----------DATABASE GENERAL MESSAGES----------
