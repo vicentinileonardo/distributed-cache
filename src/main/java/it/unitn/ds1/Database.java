@@ -37,6 +37,35 @@ public class Database extends AbstractActor {
         return Props.create(Database.class, () -> new Database(id, timeouts));
     }
 
+    // ----------DATA LOGIC----------
+    public void addData(int key, int value){
+        this.data.put(key, value);
+    }
+
+    public void addData(Map<Integer, Integer> data){
+        this.data.putAll(data);
+    }
+
+    public boolean isDataPresent(int key){
+        return this.data.containsKey(key);
+    }
+
+    public void removeData(int key){
+        this.data.remove(key);
+    }
+
+    public Integer getData(int key){
+        return this.data.get(key);
+    }
+
+    public Map<Integer, Integer> getData(){
+        return this.data;
+    }
+
+    public void clearData(){
+        this.data.clear();
+    }
+
     // ----------L2 CACHES LOGIC----------
 
     public Set<ActorRef> getL2_caches() {
@@ -49,6 +78,10 @@ public class Database extends AbstractActor {
 
     public void addL2_cache(ActorRef l2_cache) {
         this.L1_caches.add(l2_cache);
+    }
+
+    public boolean isL2Empty(){
+        return this.L2_caches.isEmpty();
     }
 
     public void removeL2_cache(ActorRef l2_cache) {
@@ -81,6 +114,11 @@ public class Database extends AbstractActor {
         return this.L1_caches.contains(l1_cache);
     }
 
+    public boolean isL1Empty(){
+        return this.L1_caches.isEmpty();
+    }
+
+
     // ----------TIMEOUT LOGIC----------
 
     public void setTimeouts(List<TimeoutConfiguration> timeouts){
@@ -109,25 +147,25 @@ public class Database extends AbstractActor {
         populateDatabase();
         log.info("[DATABASE] Started!");
         log.info("[DATABASE] Initial data in database : ");
-        for (Map.Entry<Integer, Integer> entry : data.entrySet()) {
+        for (Map.Entry<Integer, Integer> entry : getData().entrySet()) {
             log.info("[DATABASE] Key = " + entry.getKey() + ", Value = " + entry.getValue());
         }
     }
 
     public void populateDatabase() {
         for (int i = 0; i < 10; i++) {
-            data.put(i, rnd.nextInt(200));
+            addData(i, rnd.nextInt(200));
         }
         log.debug("[DATABASE] Populated!");
     }
 
     // ----------SENDING LOGIC----------
 
-    private void sendWriteConfirmation(WriteMsg msg, Set<ActorRef> caches) {
+    private void sendWriteConfirmation(WriteRequestMsg msg, Set<ActorRef> caches) {
         for (ActorRef cache : caches) {
             if (cache.equals(msg.path.get(msg.path.size() - 1))) {
                 msg.path.pop();
-                cache.tell(new Message.WriteConfirmationMsg(msg.key, msg.value, msg.path), getSelf());
+                cache.tell(new Message.WriteResponseMsg(msg.key, msg.value, msg.path), getSelf());
                 log.debug("[DATABASE] Sending write confirmation to " + cache.path().name());
             } else {
                 cache.tell(new FillMsg(msg.key, msg.value), getSelf());
@@ -145,7 +183,8 @@ public class Database extends AbstractActor {
                 .match(CurrentDataMsg.class, this::onCurrentDataMsg)
                 .match(DropDatabaseMsg.class, this::onDropDatabaseMsg)
                 .match(ReadRequestMsg.class, this::onReadRequestMsg)
-                .match(WriteMsg.class, this::onWriteMsg)
+                .match(WriteRequestMsg.class, this::onWriteRequestMsg)
+                .match(CriticalReadRequestMsg.class, this::onCriticalReadRequestMsg)
                 .match(RequestUpdatedDataMsg.class, this::onRequestUpdatedDataMsg)
                 .match(RequestConnectionMsg.class, this::onRequestConnectionMsg)
                 .matchAny(o -> log.info("[DATABASE] Received unknown message from "+ getSender()))
@@ -175,24 +214,32 @@ public class Database extends AbstractActor {
     // ----------READ MESSAGES LOGIC----------
     public void onReadRequestMsg(ReadRequestMsg msg) {
         log.debug("[DATABASE] Received read request for key {} from {}", msg.key, getSender().path().name());
-        int value = data.get(msg.key);
+        int value = getData(msg.key);
         log.debug("[DATABASE] Read value {} for key {}", value, msg.key);
     }
 
+    public void onCriticalReadRequestMsg(CriticalReadRequestMsg msg){
+        log.debug("[DATABASE][CRITICAL] Received read request for key {} from {}", msg.key, getSender().path().name());
+        int value = getData(msg.key);
+        log.debug("[DATABASE][CRITICAL] Read value {} for key {}", value, msg.key);
+        ActorRef destination = msg.path.pop();
+        destination.tell(new CriticalReadResponseMsg(msg.key, value, msg.path), getSelf());
+    }
+
     // ----------WRITE MESSAGES LOGIC----------
-    public void onWriteMsg(WriteMsg msg) {
+    public void onWriteRequestMsg(WriteRequestMsg msg) {
         log.debug("[DATABASE] Received write request for key {} with value {} from {}",
                 msg.key, msg.value, getSender().path().name());
-        data.put(msg.key, msg.value);
+        addData(msg.key, msg.value);
         log.debug("[DATABASE] Wrote value {} for key {}", msg.value, msg.key);
         // notify all L1 caches
         log.info("[DATABASE] Send write confirmation to L1 caches");
-        sendWriteConfirmation(msg, L1_caches);
+        sendWriteConfirmation(msg, getL1_caches());
 
         // notify all L2 caches that are connected directly with the db
-        if (!L2_caches.isEmpty()) {
+        if (!isL2Empty()) {
             log.info("[DATABASE] Send write confirmation to L2 caches directly connected!");
-            sendWriteConfirmation(msg, L2_caches);
+            sendWriteConfirmation(msg, getL2_caches());
         }
 
     }
@@ -200,7 +247,7 @@ public class Database extends AbstractActor {
     public void onRequestUpdatedDataMsg(RequestUpdatedDataMsg msg){
         Map<Integer, Integer> tmpData = new HashMap<>();
         for (Integer key : msg.keys){
-            tmpData.put(key, this.data.get(key));
+            tmpData.put(key, getData(key));
         }
 
         getSender().tell(new ResponseUpdatedDataMsg(tmpData), getSelf());
@@ -218,7 +265,7 @@ public class Database extends AbstractActor {
     // DEBUG ONLY: assumption is that the database is always up
     public void onDropDatabaseMsg(DropDatabaseMsg msg) {
         log.debug("[DATABASE] Database drop request!");
-        data.clear();
+        clearData();
         log.debug("[DATABASE] Dropped database!");
     }
 }

@@ -118,36 +118,66 @@ public class Message {
             this.clientID = clientID;
         }
     }
+    
+    public static class StartCriticalReadMsg implements Serializable {
+        public final int key;
+        
+        public StartCriticalReadMsg(int key){
+            this.key = key;
+        }
+    }
 
-    // ----------WRITE MESSAGES----------
-    public static class WriteConfirmationMsg implements Serializable {
+    public static class CriticalReadRequestMsg implements Serializable {
+        public final int key;
+        public Stack<ActorRef> path;
+
+        public CriticalReadRequestMsg(int key, Stack<ActorRef> path){
+            this.key = key;
+            this.path = path;
+        }
+    }
+
+    public static class CriticalReadResponseMsg implements Serializable {
         public final int key;
         public final int value;
         public Stack<ActorRef> path;
 
-        public WriteConfirmationMsg(int key, int value, Stack<ActorRef> path) {
+        public CriticalReadResponseMsg(int key, int value, Stack<ActorRef> path){
             this.key = key;
             this.value = value;
             this.path = path;
         }
     }
 
-    public static class StartWriteMsg implements Serializable{
+    // ----------WRITE MESSAGES----------
+    public static class WriteResponseMsg implements Serializable {
+        public final int key;
+        public final int value;
+        public Stack<ActorRef> path;
+
+        public WriteResponseMsg(int key, int value, Stack<ActorRef> path) {
+            this.key = key;
+            this.value = value;
+            this.path = path;
+        }
+    }
+
+    public static class StartWriteRequestMsg implements Serializable{
         public final int key;
         public final int value;
 
-        public StartWriteMsg(int key, int value) {
+        public StartWriteRequestMsg(int key, int value) {
             this.key = key;
             this.value = value;
         }
     }
 
-    public static class WriteMsg implements Serializable{
+    public static class WriteRequestMsg implements Serializable{
         public final int key;
         public final int value;
         public Stack<ActorRef> path;
 
-        public WriteMsg(int key, int value, Stack<ActorRef> path) {
+        public WriteRequestMsg(int key, int value, Stack<ActorRef> path) {
             this.key = key;
             this.value = value;
             this.path = path;

@@ -243,7 +243,7 @@ public class DistributedCacheSystem {
     }
 
 
-    private void sendWriteMsgs() {
+    private void sendWriteRequestMsgs() {
         ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
 
         // generate a random number
@@ -253,7 +253,7 @@ public class DistributedCacheSystem {
         // HashSet.size - 1
         int rndNumber = rnd.nextInt(this.clientActors.size());
         ActorRef client = tmpArray[rndNumber];
-        StartWriteMsg msg = new StartWriteMsg(0, 10);
+        StartWriteRequestMsg msg = new StartWriteRequestMsg(0, 10);
         client.tell(msg, ActorRef.noSender());
     }
 
@@ -268,7 +268,7 @@ public class DistributedCacheSystem {
         distributedCacheSystem.buildSystem();
         System.out.println("System built!");
         distributedCacheSystem.init();
-        distributedCacheSystem.sendWriteMsgs();
+        distributedCacheSystem.sendWriteRequestMsgs();
         try {
             sleep(2000);
             System.out.println(">>> Press ENTER to exit <<<");
