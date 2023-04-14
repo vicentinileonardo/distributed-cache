@@ -163,12 +163,12 @@ public class Database extends AbstractActor {
 
     private void sendWriteConfirmation(WriteRequestMsg msg, Set<ActorRef> caches) {
         for (ActorRef cache : caches) {
-            if (cache.equals(msg.path.get(msg.path.size() - 1))) {
-                msg.path.pop();
-                cache.tell(new Message.WriteResponseMsg(msg.key, msg.value, msg.path), getSelf());
+            if (cache.equals(msg.getPath().get(msg.getPath().size() - 1))) {
+                msg.getDestination();
+                cache.tell(new Message.WriteResponseMsg(msg.getKey(), msg.getValue(), msg.getPath()), getSelf());
                 log.debug("[DATABASE] Sending write confirmation to " + cache.path().name());
             } else {
-                cache.tell(new FillMsg(msg.key, msg.value), getSelf());
+                cache.tell(new FillMsg(msg.getKey(), msg.getValue()), getSelf());
                 log.debug("[DATABASE] Sending fill message to " + cache.path().name());
             }
         }
@@ -194,16 +194,16 @@ public class Database extends AbstractActor {
     // ----------INITIALIZATION MESSAGES LOGIC----------
     private void onInitMsg(Message.InitMsg msg) throws InvalidMessageException{
 
-        if (!Objects.equals(msg.type, "L1")) {
+        if (!Objects.equals(msg.getType(), "L1")) {
             throw new InvalidMessageException("Message to wrong destination!");
         }
-        addL1_cache(msg.id);
+        addL1_cache(msg.getId());
         // log.info("[DATABASE] Added L1 cache {} as a child!", getSender().path().name());
     }
 
     private void onRequestConnectionMsg(RequestConnectionMsg msg) {
-        if (!msg.type.isEmpty()){
-            if (msg.type.equals("L2")){
+        if (!msg.getType().isEmpty()){
+            if (msg.getType().equals("L2")){
                 addL2_cache(getSender());
             } else {
                 addL1_cache(getSender());
@@ -213,25 +213,27 @@ public class Database extends AbstractActor {
 
     // ----------READ MESSAGES LOGIC----------
     public void onReadRequestMsg(ReadRequestMsg msg) {
-        log.debug("[DATABASE] Received read request for key {} from {}", msg.key, getSender().path().name());
-        int value = getData(msg.key);
-        log.debug("[DATABASE] Read value {} for key {}", value, msg.key);
+        log.debug("[DATABASE] Received read request for key {} from {}",
+                msg.getKey(), getSender().path().name());
+        int value = getData(msg.getKey());
+        log.debug("[DATABASE] Read value {} for key {}", value, msg.getKey());
     }
 
     public void onCriticalReadRequestMsg(CriticalReadRequestMsg msg){
-        log.debug("[DATABASE][CRITICAL] Received read request for key {} from {}", msg.key, getSender().path().name());
-        int value = getData(msg.key);
-        log.debug("[DATABASE][CRITICAL] Read value {} for key {}", value, msg.key);
-        ActorRef destination = msg.path.pop();
-        destination.tell(new CriticalReadResponseMsg(msg.key, value, msg.path), getSelf());
+        log.debug("[DATABASE][CRITICAL] Received read request for key {} from {}",
+                msg.getKey(), getSender().path().name());
+        int value = getData(msg.getKey());
+        log.debug("[DATABASE][CRITICAL] Read value {} for key {}", value, msg.getKey());
+        ActorRef destination = msg.getDestination();
+        destination.tell(new CriticalReadResponseMsg(msg.getKey(), value, msg.getPath()), getSelf());
     }
 
     // ----------WRITE MESSAGES LOGIC----------
     public void onWriteRequestMsg(WriteRequestMsg msg) {
         log.debug("[DATABASE] Received write request for key {} with value {} from {}",
-                msg.key, msg.value, getSender().path().name());
-        addData(msg.key, msg.value);
-        log.debug("[DATABASE] Wrote value {} for key {}", msg.value, msg.key);
+                msg.getKey(), msg.getValue(), getSender().path().name());
+        addData(msg.getKey(), msg.getValue());
+        log.debug("[DATABASE] Wrote value {} for key {}", msg.getValue(), msg.getKey());
         // notify all L1 caches
         log.info("[DATABASE] Send write confirmation to L1 caches");
         sendWriteConfirmation(msg, getL1_caches());
@@ -246,7 +248,7 @@ public class Database extends AbstractActor {
 
     public void onRequestUpdatedDataMsg(RequestUpdatedDataMsg msg){
         Map<Integer, Integer> tmpData = new HashMap<>();
-        for (Integer key : msg.keys){
+        for (Integer key : msg.getKeys()){
             tmpData.put(key, getData(key));
         }
 
@@ -255,9 +257,9 @@ public class Database extends AbstractActor {
 
     // ----------GENERAL DATABASE MESSAGES LOGIC----------
     public void onCurrentDataMsg(CurrentDataMsg msg) {
-        CustomPrint.debugPrint(classString, "","", "Current data in database " + id + ":");
+        CustomPrint.debugPrint(classString, "","", "Current data in database :");
         log.debug("[DATABASE] Current data in database:");
-        for (Map.Entry<Integer, Integer> entry : data.entrySet()) {
+        for (Map.Entry<Integer, Integer> entry : getData().entrySet()) {
             log.debug("[DATABASE] Key = " + entry.getKey() + ", Value = " + entry.getValue());
         }
     }

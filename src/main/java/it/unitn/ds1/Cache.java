@@ -247,6 +247,7 @@ public class Cache extends AbstractActor{
         return receiveBuilder()
                 .match(StartInitMsg.class, this::onStartInitMsg)
                 .match(InitMsg.class, this::onInitMsg)
+                .match(InfoMsg.class, this::onInfoMsg)
                 // Write messages
                 .match(WriteRequestMsg.class, this::onWriteRequestMsg)
                 .match(WriteResponseMsg.class, this::onWriteResponseMsg)
@@ -293,19 +294,19 @@ public class Cache extends AbstractActor{
     private void onWriteResponseMsg(WriteResponseMsg msg){
         if (!isCrashed()) {
             if (!hasResponded()) {
-                ActorRef destination = msg.path.pop();
+                ActorRef destination = msg.getDestination();
                 destination.tell(msg, getSelf());
 
                 if (getCacheType() == TYPE.L1) {
                     for (ActorRef child : getChildren()) {
                         if (!child.equals(destination)) {
-                            child.tell(new FillMsg(msg.key, msg.value), getSelf());
+                            child.tell(new FillMsg(msg.getKey(), msg.getValue()), getSelf());
                         }
                     }
                 }
 
-                if (isDataPresent(msg.key)) {
-                    addData(msg.key, msg.value);
+                if (isDataPresent(msg.getKey())) {
+                    addData(msg.getKey(), msg.getValue());
                 }
 
                 log.info("[{} CACHE {}] Received write confirmation!",
@@ -318,8 +319,8 @@ public class Cache extends AbstractActor{
 
     private void onWriteRequestMsg(WriteRequestMsg msg){
         if(!isCrashed()) {
-            msg.path.push(getSelf());
-            getParent().tell(msg, getSelf());
+            WriteRequestMsg newMsg = new WriteRequestMsg(msg.getKey(), msg.getValue(), msg.getPath(), getSelf());
+            getParent().tell(newMsg, getSelf());
             sendRequest(getSender());
             getContext().getSystem().getScheduler().scheduleOnce(
                     Duration.create(getTimeout("write")*1000, TimeUnit.MILLISECONDS),
@@ -333,11 +334,11 @@ public class Cache extends AbstractActor{
 
     private void onFillMsg(FillMsg msg){
         if(!isCrashed()){
-            if (isDataPresent(msg.key)){
-                addData(msg.key, msg.value);
+            if (isDataPresent(msg.getKey())){
+                addData(msg.getKey(), msg.getValue());
             }
             for (ActorRef child : getChildren()){
-                FillMsg fillMsg = new FillMsg(msg.key, msg.value);
+                FillMsg fillMsg = new FillMsg(msg.getKey(), msg.getValue());
                 if (child.path().name().contains("cache")){
                     child.tell(fillMsg, getSelf());}
             }
@@ -348,8 +349,8 @@ public class Cache extends AbstractActor{
 
     private void onCriticalReadRequestMsg(CriticalReadRequestMsg msg){
         if (!isCrashed()){
-            msg.path.push(getSelf());
-            parent.tell(msg, getSelf());
+            CriticalReadRequestMsg newMsg = new CriticalReadRequestMsg(msg.getKey(), msg.getPath(), getSelf());
+            parent.tell(newMsg, getSelf());
             sendRequest(getSender());
             getContext().getSystem().getScheduler().scheduleOnce(
                     Duration.create(getTimeout("crit_read")*1000, TimeUnit.MILLISECONDS),
@@ -365,8 +366,8 @@ public class Cache extends AbstractActor{
     private void onCriticalReadResponseMsg(CriticalReadResponseMsg msg){
         if (!isCrashed()){
             if(!hasResponded()){
-                ActorRef destination = msg.path.pop();
-                destination.tell(msg, getSelf());
+                ActorRef destination = msg.getDestination();
+                destination.tell(new CriticalReadResponseMsg(msg.getKey(), msg.getValue(), msg.getPath()), getSelf());
 
                 log.info("[{} CACHE {}][CRITICAL] Received read confirmation!",
                         getCacheType().toString(), String.valueOf(getID()));
@@ -376,14 +377,27 @@ public class Cache extends AbstractActor{
         }
     }
 
-    // ----------INITIALIZATION MESSAGES LOGIC----------
+    // ----------GENERAL MESSAGES LOGIC----------
     private void onInitMsg(InitMsg msg) throws InvalidMessageException{
-        if ((getCacheType() == TYPE.L1 && !Objects.equals(msg.type, "L2")) ||
-                (getCacheType() == TYPE.L2 && !Objects.equals(msg.type, "client"))){
+        if ((getCacheType() == TYPE.L1 && !Objects.equals(msg.getType(), "L2")) ||
+                (getCacheType() == TYPE.L2 && !Objects.equals(msg.getType(), "client"))){
             throw new InvalidMessageException("Message to wrong destination!");
         }
 
-        addChild(msg.id);
+        addChild(msg.getId());
+    }
+
+    private void onInfoMsg(InfoMsg msg) {
+        log.info("[{} CACHE {}] Parent: ", getCacheType(), getID(), getParent().path().name());
+        log.info("[{} CACHE {}] Children: ", getCacheType(), getID());
+        for (ActorRef child : getChildren()) {
+            log.info("[{} CACHE {}] {} ", getCacheType(), getID(), child.path().name());
+        }
+        log.info("[{} CACHE {}] Data: ", getCacheType(), getID());
+        for (Map.Entry<Integer, Integer> entry : getData().entrySet()) {
+            log.info("[{} CACHE {}] Key = {}, Value = {} ",
+                    getCacheType(), getID(), entry.getKey(), entry.getValue());
+        }
     }
 
     // ----------CRASH MESSAGES LOGIC----------
@@ -409,12 +423,12 @@ public class Cache extends AbstractActor{
 
     private void onResponseDataRecoverMsg(ResponseDataRecoverMsg msg){
         childrenToRecover.remove(getSender());
-        if (msg.parent != getSelf()){
+        if (msg.getParent() != getSelf()){
             children.remove(getSender());
         }
 
-        recoveredKeys.addAll(msg.data.keySet());
-        recoveredValuesForChild.put(getSender(), msg.data);
+        recoveredKeys.addAll(msg.getData().keySet());
+        recoveredValuesForChild.put(getSender(), msg.getData());
 
         if (childrenToRecover.isEmpty()){
             getParent().tell(new RequestUpdatedDataMsg(recoveredKeys), getSelf());
@@ -426,7 +440,7 @@ public class Cache extends AbstractActor{
     }
 
     private void onResponseUpdatedDataMsg(ResponseUpdatedDataMsg msg){
-        addData(msg.data);
+        addData(msg.getData());
 
         for (Map.Entry<ActorRef , Map<Integer, Integer>> entry: this.recoveredValuesForChild.entrySet()){
             ActorRef child = entry.getKey();
@@ -434,7 +448,7 @@ public class Cache extends AbstractActor{
             for (Map.Entry<Integer, Integer> dataEntry: entry.getValue().entrySet()){
                 int key = dataEntry.getKey();
                 int value = dataEntry.getValue();
-                if (msg.data.get(key) != value){
+                if (msg.getData().get(key) != value){
                     tmpData.put(key, value);
                 }
             }
@@ -446,6 +460,6 @@ public class Cache extends AbstractActor{
     }
 
     private void onUpdateDataMsg(UpdateDataMsg msg){
-        this.data.putAll(msg.data);
+        this.data.putAll(msg.getData());
     }
 }

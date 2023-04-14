@@ -40,6 +40,10 @@ public class Client extends AbstractActor {
         return Props.create(Client.class, () -> new Client(id, parent, timeouts, l2Caches));
     }
 
+    private int getId(){
+        return this.id;
+    }
+
     // ----------PARENT LOGIC----------
 
     public ActorRef getParent() {
@@ -93,8 +97,7 @@ public class Client extends AbstractActor {
 
     private void sendWriteRequestMsg(int key, int value) {
         Stack<ActorRef> path = new Stack<>();
-        path.push(getSelf());
-        WriteRequestMsg msg = new WriteRequestMsg(key, value, path);
+        WriteRequestMsg msg = new WriteRequestMsg(key, value, path, getSelf());
         getParent().tell(msg, getSelf());
         sendRequest();
         getContext().system().scheduler().scheduleOnce(
@@ -108,7 +111,7 @@ public class Client extends AbstractActor {
     private void sendCriticalReadRequestMsg(int key){
         Stack<ActorRef> path = new Stack<>();
         path.push(getSelf());
-        CriticalReadRequestMsg msg = new CriticalReadRequestMsg(key, path);
+        CriticalReadRequestMsg msg = new CriticalReadRequestMsg(key, path, getSelf());
         getParent().tell(msg, getSelf());
         sendRequest();
         getContext().system().scheduler().scheduleOnce(
@@ -126,15 +129,20 @@ public class Client extends AbstractActor {
     public Receive createReceive() {
         return receiveBuilder()
                 .match(StartInitMsg.class, this::onStartInitMsg)
-                .match(StartWriteRequestMsg.class, this::onStartWriteRequestMsg)
+                .match(StartWriteMsg.class, this::onStartWriteMsg)
                 .match(StartCriticalReadMsg.class, this::onStartCriticalReadMsg)
                 .match(WriteResponseMsg.class, this::onWriteResponseMsg)
                 .match(CriticalReadResponseMsg.class, this::onCriticalReadResponseMsg)
                 .match(TimeoutMsg.class, this::onTimeoutMsg)
                 .match(TimeoutElapsedMsg.class, this::onTimeoutElapsedMsg)
+                .match(InfoMsg.class, this::onInfoMsg)
                 .matchAny(o -> log.debug("[CLIENT " + id + "] received unknown message from " +
                         getSender().path().name() + ": " + o))
                 .build();
+    }
+
+    private void onInfoMsg(InfoMsg msg){
+        log.info("[CLIENT {}] Parent: ", getId(), getParent().path().name());
     }
 
     private void onStartInitMsg(StartInitMsg msg) {
@@ -143,7 +151,7 @@ public class Client extends AbstractActor {
     }
 
     private void onTimeoutMsg(TimeoutMsg msg) {
-        if (hasResponded()) {
+        if (!hasResponded()) {
             log.info("[CLIENT " + id + "] Received timeout msg from {}!", getSender().path().name());
             receivedResponse();
             log.info("[CLIENT " + id + "] Connecting to another L2 cache");
@@ -170,29 +178,29 @@ public class Client extends AbstractActor {
     }
 
     // ----------WRITE MESSAGES LOGIC----------
-    private void onStartWriteRequestMsg(StartWriteRequestMsg msg) {
+    private void onStartWriteMsg(StartWriteMsg msg) {
         log.info("[CLIENT " + id + "] Received write msg!");
-        sendWriteRequestMsg(msg.key, msg.value);
+        sendWriteRequestMsg(msg.getKey(), msg.getValue());
     }
 
     private void onWriteResponseMsg(WriteResponseMsg msg) {
         if (!hasResponded()) {
             receivedResponse();
             log.info("[CLIENT {}] Successful write operation of value {} for key {}",
-                    this.id, msg.value, msg.key);
+                    this.id, msg.getValue(), msg.getKey());
         }
     }
 
     // ----------READ MESSAGES LOGIC----------
     private void onStartCriticalReadMsg(StartCriticalReadMsg msg){
-        sendCriticalReadRequestMsg(msg.key);
+        sendCriticalReadRequestMsg(msg.getKey());
     }
 
     private void onCriticalReadResponseMsg(CriticalReadResponseMsg msg){
         if (!hasResponded()){
             receivedResponse();
             log.info("[CLIENT {}][CRITICAL] Received response from read containing value {} for key {}",
-                    this.id, msg.value, msg.key);
+                    this.id, msg.getValue(), msg.getKey());
         }
     }
 }
