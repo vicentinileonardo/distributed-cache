@@ -272,7 +272,6 @@ public class Database extends AbstractActor {
             throw new InvalidMessageException("Message to wrong destination!");
         }
         addL1_cache(msg.getId());
-        // log.info("[DATABASE] Added L1 cache {} as a child!", getSender().path().name());
     }
 
     private void onRequestConnectionMsg(RequestConnectionMsg msg) {
@@ -293,7 +292,7 @@ public class Database extends AbstractActor {
         log.debug("[DATABASE] Read value {} for key {}", value, msg.getKey());
     }
 
-    private void onCriticalReadRequestMsg(CriticalReadRequestMsg msg){
+    private void onCriticalReadRequestMsg(CriticalReadRequestMsg msg) {
         log.debug("[DATABASE][CRITICAL] Received read request for key {} from {}",
                 msg.getKey(), getSender().path().name());
         int value = getData(msg.getKey());
@@ -301,24 +300,10 @@ public class Database extends AbstractActor {
         Stack<ActorRef> tmpStack = msg.getPath();
         ActorRef destination = tmpStack.pop();
         destination.tell(new CriticalReadResponseMsg(msg.getKey(), value, tmpStack), getSelf());
-    public void onReadRequestMsg(ReadRequestMsg msg) {
-        log.debug("[DATABASE] Received read request for key {} from {}",
-                msg.getKey(), getSender().path().name());
-        int value = getData(msg.getKey());
-        log.debug("[DATABASE] Read value {} for key {}", value, msg.getKey());
-    }
-
-    public void onCriticalReadRequestMsg(CriticalReadRequestMsg msg){
-        log.debug("[DATABASE][CRITICAL] Received read request for key {} from {}",
-                msg.getKey(), getSender().path().name());
-        int value = getData(msg.getKey());
-        log.debug("[DATABASE][CRITICAL] Read value {} for key {}", value, msg.getKey());
-        ActorRef destination = msg.getDestination();
-        destination.tell(new CriticalReadResponseMsg(msg.getKey(), value, msg.getPath()), getSelf());
     }
 
     // ----------WRITE MESSAGES LOGIC----------
-    private void onWriteRequestMsg(WriteRequestMsg msg) {
+    private void onWriteRequestMsg (WriteRequestMsg msg){
         log.debug("[DATABASE] Received write request for key {} with value {} from {}",
                 msg.getKey(), msg.getValue(), getSender().path().name());
         addData(msg.getKey(), msg.getValue());
@@ -335,19 +320,19 @@ public class Database extends AbstractActor {
 
     }
 
-    private void onRequestUpdatedDataMsg(RequestUpdatedDataMsg msg){
+    private void onRequestUpdatedDataMsg (RequestUpdatedDataMsg msg){
         Map<Integer, Integer> tmpData = new HashMap<>();
-        for (Integer key : msg.getKeys()){
+        for (Integer key : msg.getKeys()) {
             tmpData.put(key, getData(key));
         }
 
         getSender().tell(new ResponseUpdatedDataMsg(tmpData), getSelf());
     }
 
-    private void onRefillResponseMsg(RefillResponseMsg msg){
-        if (!hasResponded()){
+    private void onRefillResponseMsg (RefillResponseMsg msg){
+        if (!hasResponded()) {
             confirmedRequest(getSender());
-            if(haveAllConfirmed()){
+            if (haveAllConfirmed()) {
                 receivedResponse();
                 // send confirmation through path
                 addData(msg.getKey(), msg.getValue());
@@ -358,20 +343,20 @@ public class Database extends AbstractActor {
     }
 
     // ----------GENERAL DATABASE MESSAGES LOGIC----------
-    public void onCurrentDataMsg(CurrentDataMsg msg) {
-        CustomPrint.debugPrint(classString, "","", "Current data in database :");
-    private void onCurrentDataMsg(CurrentDataMsg msg) {
-        CustomPrint.debugPrint(classString, "","", "Current data in database :");
+
+    private void onCurrentDataMsg(CurrentDataMsg msg){
+        CustomPrint.debugPrint(classString, "", "", "Current data in database :");
         log.debug("[DATABASE] Current data in database:");
         for (Map.Entry<Integer, Integer> entry : getData().entrySet()) {
             log.debug("[DATABASE] Key = " + entry.getKey() + ", Value = " + entry.getValue());
         }
     }
 
-    // DEBUG ONLY: assumption is that the database is always up
-    private void onDropDatabaseMsg(DropDatabaseMsg msg) {
+        // DEBUG ONLY: assumption is that the database is always up
+    private void onDropDatabaseMsg (DropDatabaseMsg msg){
         log.debug("[DATABASE] Database drop request!");
         clearData();
         log.debug("[DATABASE] Dropped database!");
     }
 }
+

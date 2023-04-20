@@ -40,7 +40,7 @@ public class Client extends AbstractActor {
         return Props.create(Client.class, () -> new Client(id, parent, timeouts, l2Caches));
     }
 
-    private int getId(){
+    private int getId() {
         return this.id;
     }
 
@@ -66,23 +66,21 @@ public class Client extends AbstractActor {
 
     // ----------TIMEOUT LOGIC----------
 
-    public void setTimeouts(List<TimeoutConfiguration> timeouts){
-        for (TimeoutConfiguration timeout: timeouts){
+    public void setTimeouts(List<TimeoutConfiguration> timeouts) {
+        for (TimeoutConfiguration timeout : timeouts) {
             this.timeouts.put(timeout.getType(), timeout.getValue());
         }
     }
 
-    public HashMap<String, Integer> getTimeouts(){
+    public HashMap<String, Integer> getTimeouts() {
         return this.timeouts;
     }
 
-    public Integer getTimeout(String timeout){
-        return this.timeouts.get(timeout);
-    public Integer getTimeout(String timeout){
+    public Integer getTimeout(String timeout) {
         return this.timeouts.get(timeout);
     }
 
-    private void startTimeout(String type){
+    private void startTimeout (String type){
         getContext().system().scheduler().scheduleOnce(
                 Duration.create(getTimeout(type), TimeUnit.SECONDS),
                 getSelf(),
@@ -91,63 +89,47 @@ public class Client extends AbstractActor {
         );
     }
 
-    private boolean hasResponded(){return this.responded;}
+    private boolean hasResponded () {
+        return this.responded;
+    }
 
-    private void sendRequest(){ this.responded = false;}
-    private void receivedResponse(){ this.responded = true;}
+    private void sendRequest () {
+        this.responded = false;
+    }
+    private void receivedResponse () {
+        this.responded = true;
+    }
 
     /*-- Actor logic -- */
 
-    public void preStart() {}
+    public void preStart () {
+    }
 
     // ----------SEND LOGIC----------
-    private void sendInitMsg(){
+    private void sendInitMsg () {
         InitMsg msg = new InitMsg(getSelf(), "client");
         getParent().tell(msg, getSelf());
     }
 
-    private void sendWriteRequestMsg(int key, int value) {
-    private void sendWriteRequestMsg(int key, int value) {
-        Stack<ActorRef> path = new Stack<>();
-        WriteRequestMsg msg = new WriteRequestMsg(key, value, path, getSelf());
-        getParent().tell(msg, getSelf());
-        sendRequest();
-        getContext().system().scheduler().scheduleOnce(
-                Duration.create(getTimeout("write"), TimeUnit.SECONDS),
-                getSelf(),
-                new TimeoutMsg(), // the message to send
-                getContext().system().dispatcher(), getSelf()
-        );
-    }
-
-    private void sendCriticalReadRequestMsg(int key){
+    private void sendWriteRequestMsg ( int key, int value){
         Stack<ActorRef> path = new Stack<>();
         path.push(getSelf());
         WriteRequestMsg msg = new WriteRequestMsg(key, value, path);
-        getParent().tell(msg, getSelf());
-        CriticalReadRequestMsg msg = new CriticalReadRequestMsg(key, path, getSelf());
         getParent().tell(msg, getSelf());
         sendRequest();
         startTimeout("write");
     }
 
-    private void sendCriticalReadRequestMsg(int key){
+    private void sendCriticalReadRequestMsg (int key){
         Stack<ActorRef> path = new Stack<>();
         path.push(getSelf());
         CriticalReadRequestMsg msg = new CriticalReadRequestMsg(key, path);
         getParent().tell(msg, getSelf());
         sendRequest();
         startTimeout("crit_read");
-        getContext().system().scheduler().scheduleOnce(
-                Duration.create(getTimeout("crit_read"), TimeUnit.SECONDS),
-                getSelf(),
-                new TimeoutMsg(), // the message to send
-                getContext().system().dispatcher(), getSelf()
-        );
     }
 
-
-    private void sendCriticalWriteMsg(int key, int value) {
+    private void sendCriticalWriteMsg (int key, int value){
         Stack<ActorRef> path = new Stack<>();
         path.push(getSelf());
         CriticalWriteRequestMsg msg = new CriticalWriteRequestMsg(key, value, path);
@@ -160,7 +142,7 @@ public class Client extends AbstractActor {
 
     // Here we define the mapping between the received message types and the database methods
     @Override
-    public Receive createReceive() {
+    public Receive createReceive () {
         return receiveBuilder()
                 .match(StartInitMsg.class, this::onStartInitMsg)
                 .match(StartWriteMsg.class, this::onStartWriteMsg)
@@ -179,16 +161,16 @@ public class Client extends AbstractActor {
                 .build();
     }
 
-    private void onInfoMsg(InfoMsg msg){
+    private void onInfoMsg (InfoMsg msg){
         log.info("[CLIENT {}] Parent: ", getId(), getParent().path().name());
     }
 
-    private void onStartInitMsg(StartInitMsg msg) {
+    private void onStartInitMsg (StartInitMsg msg){
         // log.info("[CLIENT " + id + "] Received initialization msg!");
         sendInitMsg();
     }
 
-    private void onTimeoutMsg(TimeoutMsg msg) {
+    private void onTimeoutMsg (TimeoutMsg msg){
         if (!hasResponded()) {
             log.info("[CLIENT " + id + "] Received timeout msg from {}!", getSender().path().name());
             receivedResponse();
@@ -196,7 +178,7 @@ public class Client extends AbstractActor {
             Set<ActorRef> caches = getL2_caches();
             ActorRef[] tmpArray = caches.toArray(new ActorRef[caches.size()]);
             ActorRef cache = null;
-            while(cache == this.parent || cache == null) {
+            while (cache == this.parent || cache == null) {
                 // generate a random number
                 Random rnd = new Random();
 
@@ -210,19 +192,18 @@ public class Client extends AbstractActor {
         }
     }
 
-    private void onTimeoutElapsedMsg(TimeoutElapsedMsg msg){
+    private void onTimeoutElapsedMsg (TimeoutElapsedMsg msg){
         log.info("[CLIENT " + id + "] Received timeout msg from {}!", getSender().path().name());
         receivedResponse();
     }
 
     // ----------WRITE MESSAGES LOGIC----------
-    private void onStartWriteMsg(StartWriteMsg msg) {
+    private void onStartWriteMsg (StartWriteMsg msg){
         log.info("[CLIENT " + id + "] Received write msg!");
-        sendWriteRequestMsg(msg.getKey(), msg.getValue());
         sendWriteRequestMsg(msg.getKey(), msg.getValue());
     }
 
-    private void onWriteResponseMsg(WriteResponseMsg msg) {
+    private void onWriteResponseMsg (WriteResponseMsg msg){
         if (!hasResponded()) {
             receivedResponse();
             log.info("[CLIENT {}] Successful write operation of value {} for key {}",
@@ -230,38 +211,23 @@ public class Client extends AbstractActor {
         }
     }
 
-    private void onStartCriticalWriteMsg(StartCriticalWriteMsg msg){
+    private void onStartCriticalWriteMsg (StartCriticalWriteMsg msg){
         log.info("[CLIENT " + id + "] Received write msg!");
         sendCriticalWriteMsg(msg.getKey(), msg.getValue());
     }
 
     // ----------READ MESSAGES LOGIC----------
-    private void onStartCriticalReadMsg(StartCriticalReadMsg msg){
+    private void onStartCriticalReadMsg (StartCriticalReadMsg msg){
         sendCriticalReadRequestMsg(msg.getKey());
     }
 
-    private void onWriteResponseMsg(WriteResponseMsg msg) {
+    private void onCriticalReadResponseMsg (CriticalReadResponseMsg msg){
         if (!hasResponded()) {
-    private void onCriticalReadResponseMsg(CriticalReadResponseMsg msg){
-        if (!hasResponded()){
             receivedResponse();
             log.info("[CLIENT {}] Successful write operation of value {} for key {}",
                     this.id, msg.getValue(), msg.getKey());
         }
     }
-
-    // ----------READ MESSAGES LOGIC----------
-    private void onStartCriticalReadMsg(StartCriticalReadMsg msg){
-        sendCriticalReadRequestMsg(msg.getKey());
-    }
-
-    private void onCriticalReadResponseMsg(CriticalReadResponseMsg msg){
-        if (!hasResponded()){
-            receivedResponse();
-            log.info("[CLIENT {}][CRITICAL] Received response from read containing value {} for key {}",
-                    this.id, msg.getValue(), msg.getKey());
-            log.info("[CLIENT {}][CRITICAL] Received response from read containing value {} for key {}",
-                    this.id, msg.getValue(), msg.getKey());
-        }
-    }
 }
+
+
