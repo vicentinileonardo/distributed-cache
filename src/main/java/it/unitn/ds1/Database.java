@@ -119,51 +119,55 @@ public class Database extends AbstractActor {
         CustomPrint.debugPrint(classString, "Database " + id + " populated");
     }
 
-
-
-
-    public void onReadRequestMsg(ReadRequestMsg msg) {
-        CustomPrint.debugPrint(classString, "Database " + id + " received a read request for key " + msg.key + " from client " + msg.clientID);
-        int value = data.get(msg.key);
-        CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + msg.key);
-
-        /*
-        ReadConfirmationMsg readConfirmationMsg = new ReadConfirmationMsg(msg.key, value, msg.clientID);
-        for (ActorRef cache : L2_caches) {
-            cache.tell(readConfirmationMsg, getSelf());
-        }
-        for (ActorRef cache : L1_caches) {
-            cache.tell(readConfirmationMsg, getSelf());
-        }
-        */
+    public boolean isDataPresent(int key){
+        return data.containsKey(key);
     }
 
-    public void onWriteRequestMsg(WriteRequestMsg msg) {
-        CustomPrint.debugPrint(classString, "Database " + id + " received a write request for key " + msg.key + " with value " + msg.value);
-
-        //data.put(msg.key, msg.value);
-        //CustomPrint.debugPrint(classString, "Database " + id + " wrote key " + msg.key + " with value " + msg.value);
-
-        // notify all L1 caches
-        //for (ActorRef cache : L1_caches) {}
-
+    public int getData(int key){
+        return data.get(key);
     }
 
-    public void onCurrentDataMsg(CurrentDataMsg msg) {
-        CustomPrint.debugPrint(classString, "Current data in database " + id + ":");
-        for (Map.Entry<Integer, Integer> entry : data.entrySet()) {
-            CustomPrint.debugPrint(classString, "Key = " + entry.getKey() + ", Value = " + entry.getValue());
+
+    public void onReadRequestMsg(Message.ReadRequestMsg readRequestMsg){
+        CustomPrint.debugPrint(classString, "Database " + id + " received a read request for key " + readRequestMsg.getKey() + " from cache " + getSender().path().name());
+
+        if (isDataPresent(readRequestMsg.getKey())){
+            //send response to child (l1 cache) (or l2 cache, if crashes are considered)
+            ActorRef child = readRequestMsg.getLast();
+
+            int value = getData(readRequestMsg.getKey());
+
+            Message.ReadResponseMsg readResponseMsg = new Message.ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath());
+            child.tell(readResponseMsg, getSelf());
+            CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey() + " and sent it to cache " + child.path().name());
+
+        } else { // data not present, to be decided if the scenario is possible
+            //as a matter of fact the client should pick key value that are stored maybe in a config file, to be sure the key is present at least in the database
+            //for now, the database will send a response to the client with a value of -1
+            ActorRef child = readRequestMsg.getLast();
+            int value = -1;
+
+            Message.ReadResponseMsg readResponseMsg = new Message.ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath());
+            child.tell(readResponseMsg, getSelf());
+            CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey());
+
         }
     }
 
-    // DEBUG ONLY: assumption is that the database is always up
-    public void onDropDatabaseMsg(DropDatabaseMsg msg) {
-        CustomPrint.debugPrint(classString, "Database drop request");
-        data.clear();
-        CustomPrint.debugPrint(classString, "Database " + id + " dropped");
+    // ----------SENDING LOGIC----------
+
+    private void sendWriteConfirmation(WriteMsg msg, Set<ActorRef> caches) {
+        for (ActorRef cache : caches) {
+            if (!cache.equals(getSender())){
+                cache.tell(new FillMsg(msg.key, msg.value), ActorRef.noSender());
+            } else {
+                msg.path.pop();
+                cache.tell(new WriteConfirmationMsg(msg.key, msg.value, msg.path), ActorRef.noSender());
+            }
+        }
     }
 
-
+    // ----------RECEIVE LOGIC----------
     // Here we define the mapping between the received message types and the database methods
     @Override
     public Receive createReceive() {
@@ -172,11 +176,12 @@ public class Database extends AbstractActor {
                 .match(CurrentDataMsg.class, this::onCurrentDataMsg)
                 .match(DropDatabaseMsg.class, this::onDropDatabaseMsg)
                 .match(ReadRequestMsg.class, this::onReadRequestMsg)
-                .match(WriteRequestMsg.class, this::onWriteRequestMsg)
-                .matchAny(o -> System.out.println("Received unknown message from " + getSender()))
+                .match(WriteMsg.class, this::onWriteMsg)
+                .matchAny(o -> System.out.println("Database received unknown message from " + getSender()))
                 .build();
     }
 
+    // ----------INITIALIZATION MESSAGES LOGIC----------
     private void onInitMsg(Message.InitMsg msg) throws InvalidMessageException{
 //        ActorRef tmp = getSender();
 //        if (tmp == null){
@@ -192,4 +197,38 @@ public class Database extends AbstractActor {
                 " Added " + getSender() + " as a child");
     }
 
+    // ----------READ MESSAGES LOGIC----------
+
+
+    // ----------WRITE MESSAGES LOGIC----------
+    public void onWriteMsg(WriteMsg msg) {
+        CustomPrint.debugPrint(classString, "Database " + id + " received a write request for key " + msg.key + " with value " + msg.value);
+
+        data.put(msg.key, msg.value);
+        CustomPrint.debugPrint(classString, "Database " + id + " wrote key " + msg.key + " with value " + msg.value);
+
+        // notify all L1 caches
+        sendWriteConfirmation(msg, L1_caches);
+
+        // notify all L2 caches that are connected directly with the db
+        if (!L2_caches.isEmpty()) {
+            sendWriteConfirmation(msg, L2_caches);
+        }
+
+    }
+
+    // ----------GENERAL DATABASE MESSAGES LOGIC----------
+    public void onCurrentDataMsg(CurrentDataMsg msg) {
+        CustomPrint.debugPrint(classString, "Current data in database " + id + ":");
+        for (Map.Entry<Integer, Integer> entry : data.entrySet()) {
+            CustomPrint.debugPrint(classString, "Key = " + entry.getKey() + ", Value = " + entry.getValue());
+        }
+    }
+
+    // DEBUG ONLY: assumption is that the database is always up
+    public void onDropDatabaseMsg(DropDatabaseMsg msg) {
+        CustomPrint.debugPrint(classString, "Database drop request");
+        data.clear();
+        CustomPrint.debugPrint(classString, "Database " + id + " dropped");
+    }
 }
