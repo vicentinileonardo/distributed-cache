@@ -90,14 +90,19 @@ public class Client extends AbstractActor {
         parent.tell(msg, getSelf());
     }
 
-    public void sendClientReadRequestMsg(int key){
-        Message.ClientReadRequestMsg msg = new Message.ClientReadRequestMsg(key, getSelf());
-        parent.tell(msg, getSelf());
+    public void sendReadRequestMsg(int key){
+        Stack<ActorRef> path = new Stack<>();
+        path.push(getSelf());
+        Message.ReadRequestMsg msg = new Message.ReadRequestMsg(key, path);
+        msg.printPath();
+        getParent().tell(msg, getSelf());
+        CustomPrint.print(classString,"", String.valueOf(this.id), " Sent read request msg! to " + getParent());
     }
 
-    public void onClientReadResponseMsg(Message.ClientReadResponseMsg msg){
-        CustomPrint.print(classString,"", String.valueOf(this.id), " Received read response from " + getSender() + " with value " + msg.value + " for key " + msg.key);
+    public void onReadResponseMsg(Message.ReadResponseMsg msg){
+        CustomPrint.print(classString,"", String.valueOf(this.id), " Received read response from " + getSender() + " with value " + msg.getValue() + " for key " + msg.getKey());
     }
+
 
     public void sendWriteMsg(int key, int value){
         Stack<ActorRef> path = new Stack<>();
@@ -117,7 +122,7 @@ public class Client extends AbstractActor {
                 .match(Message.StartInitMsg.class, this::onStartInitMsg)
                 .match(Message.StartReadRequestMsg.class, this::onStartReadRequestMsg)
                 .match(Message.StartWriteMsg.class, this::onStartWriteMsg)
-                .match(Message.ClientReadResponseMsg.class, this::onClientReadResponseMsg)
+                .match(Message.ReadResponseMsg.class, this::onReadResponseMsg)
                 .match(Message.WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
                 .matchAny(o -> System.out.println("Client " + id +" received unknown message from " + getSender()))
                 .build();
@@ -130,7 +135,7 @@ public class Client extends AbstractActor {
 
     public void onStartReadRequestMsg(Message.StartReadRequestMsg msg) {
         CustomPrint.print(classString,"", String.valueOf(this.id), " Received start read request msg!");
-        sendClientReadRequestMsg(msg.key);
+        sendReadRequestMsg(msg.key);
     }
 
     // ----------WRITE MESSAGES LOGIC----------

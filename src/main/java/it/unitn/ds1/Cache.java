@@ -207,9 +207,8 @@ public class Cache extends AbstractActor{
         return receiveBuilder()
                 .match(Message.StartInitMsg.class, this::onStartInitMsg)
                 .match(Message.InitMsg.class, this::onInitMsg)
-                .match(Message.ClientReadRequestMsg.class, this::onClientReadRequestMsg)
-                .match(Message.CacheReadRequestMsg.class, this::onCacheReadRequestMsg)
-                .match(Message.CacheReadResponseMsg.class, this::onCacheReadResponseMsg)
+                .match(Message.ReadRequestMsg.class, this::onReadRequestMsg)
+                .match(Message.ReadResponseMsg.class, this::onReadResponseMsg)
                 .match(Message.WriteMsg.class, this::onWriteMsg)
                 .match(Message.WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
                 .matchAny(o -> System.out.println("Cache " + id +" received unknown message from " + getSender()))
@@ -218,66 +217,89 @@ public class Cache extends AbstractActor{
 
     // ----------READ MESSAGES LOGIC----------
 
-    // this function is called only by l2 cache
-    public void onClientReadRequestMsg(Message.ClientReadRequestMsg clientReadRequestMsg){
-        if (isDataPresent(clientReadRequestMsg.key)){
-            //send response to child (client)
-            ActorRef child = clientReadRequestMsg.client;
-            int value = getData(clientReadRequestMsg.key);
+    public void onReadRequestMsg(Message.ReadRequestMsg readRequestMsg){
 
-            Message.ClientReadResponseMsg response = new Message.ClientReadResponseMsg(clientReadRequestMsg.key, value);
+        CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Received read request msg from " + getSender());
+
+        //if data is present
+        if (isDataPresent(readRequestMsg.getKey())){
+
+            // check size of path
+            // 1 means that the request is coming from a client -> LL: [Client]
+            // 2 means that the request is coming from a L2 cache -> LL: [Client, L2_Cache]
+            if(readRequestMsg.getPathSize() != 1 && readRequestMsg.getPathSize() != 2){
+                CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Probably wrong route!");
+                throw new IllegalArgumentException("Probably wrong route!");
+                //TODO: send special error message to client or master
+            }
+
+            //send response to child (either client or l2 cache)
+            ActorRef child = readRequestMsg.getLast();
+
+            //check if child is between the children of this cache
+            if (!getChildren().contains(child)){
+                CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Child not present in children list!");
+                throw new IllegalArgumentException("Child not present in children list!");
+                //TODO: send special error message to client or master
+            }
+
+            int value = getData(readRequestMsg.getKey());
+
+            Message.ReadResponseMsg response = new Message.ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath());
             child.tell(response, getSelf());
-        } else { // data not present
-            //send cache read request to parent (l1 cache) (or database, with crashes (not yet implemented))
-            Message.CacheReadRequestMsg cacheReadRequestMsg = new Message.CacheReadRequestMsg(clientReadRequestMsg, getSelf());
-            parent.tell(cacheReadRequestMsg, getSelf());
-        }
-    }
 
-    // this function (on this class) is called only by l1 cache
-    public void onCacheReadRequestMsg(Message.CacheReadRequestMsg cacheReadRequestMsg){
-        if (isDataPresent(cacheReadRequestMsg.key)){
-            //send response to child (l2 cache)
-            ActorRef child = cacheReadRequestMsg.L2cache; // l2 cache
-            ActorRef client = cacheReadRequestMsg.client;
-            int value = getData(cacheReadRequestMsg.key);
+        } else { // data not present in cache
+            //send cache read request to parent (L1 cache or database)
 
-            Message.CacheReadResponseMsg response = new Message.CacheReadResponseMsg(cacheReadRequestMsg.key, value, getSelf(), child, client);
-            child.tell(response, getSelf());
-        } else { // data not present
-            //send database read request (from l1 cache) to database
-            Message.CacheReadRequestMsg l1cacheReadRequestMsg = new Message.CacheReadRequestMsg(cacheReadRequestMsg, getSelf());
-            database.tell(l1cacheReadRequestMsg, getSelf());
+            //adding cache to path
+            Stack<ActorRef> newPath = new Stack<>();
+            newPath.addAll(readRequestMsg.getPath());
+            newPath.add(getSelf());
+
+            Message.ReadRequestMsg upperReadRequestMsg = new Message.ReadRequestMsg(readRequestMsg.getKey(), newPath);
+            getParent().tell(upperReadRequestMsg, getSelf());
         }
     }
 
     //database to l1 cache
     // or l1 cache to l2 cache
-    public void onCacheReadResponseMsg(Message.CacheReadResponseMsg cacheReadResponseMsg){
+    public void onReadResponseMsg(Message.ReadResponseMsg readResponseMsg){
 
         //add data to cache
-        addData(cacheReadResponseMsg.key, cacheReadResponseMsg.value);
+        addData(readResponseMsg.getKey(), readResponseMsg.getValue());
 
-        //this approach must be changed when crashes are implemented
-        if (this.type_of_cache == TYPE.L1){
+        //check size of path:
+        // 2 means that the response is for a client -> LL:[Client, L2_Cache]
+        // 3 means that the response is for a l2 cache -> LL:[Client, L2_Cache, L1_Cache]
+        // other values are not allowed
 
-            //send response to child (l2 cache)
-            ActorRef child = cacheReadResponseMsg.L2cache;
-            ActorRef client = cacheReadResponseMsg.client;
-            int value = cacheReadResponseMsg.value;
-
-            Message.CacheReadResponseMsg response = new Message.CacheReadResponseMsg(cacheReadResponseMsg.key, value, getSelf(), child, client);
-            child.tell(response, getSelf());
-        } else if (this.type_of_cache == TYPE.L2){
-
-            //send response to child (client)
-            ActorRef child = cacheReadResponseMsg.client;
-            int value = cacheReadResponseMsg.value;
-
-            Message.ClientReadResponseMsg response = new Message.ClientReadResponseMsg(cacheReadResponseMsg.key, value);
-            child.tell(response, getSelf());
+        if(readResponseMsg.getPathSize() != 2 && readResponseMsg.getPathSize() != 3){
+            CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Probably wrong route!");
+            throw new IllegalArgumentException("Probably wrong route!");
+            //TODO: send special error message to client or master
         }
+
+        //create new path without the current cache
+        Stack<ActorRef> newPath = new Stack<>();
+        newPath.addAll(readResponseMsg.getPath());
+
+        //remove last element from path, which is the current cache
+        newPath.pop();
+
+        //child can be a client or a l2 cache
+        ActorRef child = newPath.get(newPath.size()-1); //get (not remove) last element from path
+
+        //check if child is between the children of this cache
+        if (!getChildren().contains(child)) {
+            CustomPrint.print(classString, type_of_cache.toString() + " ", String.valueOf(id), " Child not present in children list!");
+            throw new IllegalArgumentException("Child not present in children list!");
+        }
+
+        Message.ReadResponseMsg response = new Message.ReadResponseMsg(readResponseMsg.getKey(), readResponseMsg.getValue(), newPath);
+        child.tell(response, getSelf());
     }
+
+
 
     // ----------WRITE MESSAGES LOGIC----------
     private void onWriteConfirmationMsg(Message.WriteConfirmationMsg msg){

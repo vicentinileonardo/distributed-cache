@@ -127,27 +127,29 @@ public class Database extends AbstractActor {
         return data.get(key);
     }
 
-    public void onCacheReadRequestMsg(Message.CacheReadRequestMsg cacheReadRequestMsg){
-        CustomPrint.debugPrint(classString, "Database " + id + " received a read request for key " + cacheReadRequestMsg.key + " from client " + cacheReadRequestMsg.client.path().name());
 
-        if (isDataPresent(cacheReadRequestMsg.key)){
+    public void onReadRequestMsg(Message.ReadRequestMsg readRequestMsg){
+        CustomPrint.debugPrint(classString, "Database " + id + " received a read request for key " + readRequestMsg.getKey() + " from cache " + getSender().path().name());
+
+        if (isDataPresent(readRequestMsg.getKey())){
             //send response to child (l1 cache) (or l2 cache, if crashes are considered)
-            ActorRef child = cacheReadRequestMsg.L1cache; //to be handled in case of crashes
-            int value = getData(cacheReadRequestMsg.key);
+            ActorRef child = readRequestMsg.getLast();
 
-            Message.CacheReadResponseMsg cacheReadResponseMsg = new Message.CacheReadResponseMsg(cacheReadRequestMsg.key, value, child, cacheReadRequestMsg.L2cache, cacheReadRequestMsg.client);
-            child.tell(cacheReadResponseMsg, getSelf());
-            CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + cacheReadRequestMsg.key);
+            int value = getData(readRequestMsg.getKey());
 
-        } else { // data not present, to decide if the scenario is possible
+            Message.ReadResponseMsg readResponseMsg = new Message.ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath());
+            child.tell(readResponseMsg, getSelf());
+            CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey() + " and sent it to cache " + child.path().name());
+
+        } else { // data not present, to be decided if the scenario is possible
             //as a matter of fact the client should pick key value that are stored maybe in a config file, to be sure the key is present at least in the database
             //for now, the database will send a response to the client with a value of -1
-            ActorRef child = cacheReadRequestMsg.L1cache;
+            ActorRef child = readRequestMsg.getLast();
             int value = -1;
 
-            Message.CacheReadResponseMsg cacheReadResponseMsg = new Message.CacheReadResponseMsg(cacheReadRequestMsg.key, value, child, cacheReadRequestMsg.L2cache, cacheReadRequestMsg.client);
-            child.tell(cacheReadResponseMsg, getSelf());
-            CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + cacheReadRequestMsg.key);
+            Message.ReadResponseMsg readResponseMsg = new Message.ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath());
+            child.tell(readResponseMsg, getSelf());
+            CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey());
 
         }
     }
@@ -173,9 +175,9 @@ public class Database extends AbstractActor {
                 .match(Message.InitMsg.class, this::onInitMsg)
                 .match(CurrentDataMsg.class, this::onCurrentDataMsg)
                 .match(DropDatabaseMsg.class, this::onDropDatabaseMsg)
-                .match(CacheReadRequestMsg.class, this::onCacheReadRequestMsg)
+                .match(ReadRequestMsg.class, this::onReadRequestMsg)
                 .match(WriteMsg.class, this::onWriteMsg)
-                .matchAny(o -> System.out.println("Received unknown message from " + getSender()))
+                .matchAny(o -> System.out.println("Database received unknown message from " + getSender()))
                 .build();
     }
 

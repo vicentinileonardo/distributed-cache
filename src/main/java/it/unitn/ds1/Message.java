@@ -4,7 +4,7 @@ import akka.actor.Actor;
 import akka.actor.ActorRef;
 
 import java.io.Serializable;
-import java.util.Stack;
+import java.util.*;
 
 public class Message {
 
@@ -41,59 +41,102 @@ public class Message {
         }
     }
 
-    public static class CacheReadRequestMsg implements Serializable {
+    public static class ReadRequestMsg implements Serializable {
+        private final int key;
+        private final Stack<ActorRef> path;
 
-        public final int key;
-        public final ActorRef sender;
-        public final ActorRef L1cache; //this or cacheID?
-        public final ActorRef L2cache;
-        public final ActorRef client;
+        public ReadRequestMsg(int key, Stack<ActorRef> path) {
+            this.key = key;
 
-        //created by l2cache
-        public CacheReadRequestMsg(ClientReadRequestMsg clientMsg, ActorRef self) {
-            this.key = clientMsg.key;
-            this.sender = self;
-            this.L1cache = null;
-            this.L2cache = self;
-            this.client = clientMsg.client;
-        }
-
-        //created by l1cache
-        public CacheReadRequestMsg(CacheReadRequestMsg cacheMsg, ActorRef self) {
-            this.key = cacheMsg.key;
-            this.sender = self;
-            this.L1cache = self;
-            this.L2cache = cacheMsg.L2cache;
-            this.client = cacheMsg.client;
+            //path should be unmodifiable, to follow the general akka rule
+            this.path = new Stack<>();
+            this.path.addAll(path);
 
         }
+
+        public int getKey() {
+            return key;
+        }
+
+        public Stack<ActorRef> getPath() {
+            return path;
+        }
+
+        //get last element of the path
+        public ActorRef getLast() {
+            return path.peek();
+        }
+
+        //get path size
+        public int getPathSize() {
+            return path.size();
+        }
+
+        // Print the path
+        public String printPath() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Current path of message: [ ");
+            for (ActorRef actor : path) {
+                sb.append(actor.path().name()).append(" ");
+            }
+            sb.append(" ]");
+            return sb.toString();
+        }
+
     }
 
-    public static class ClientReadResponseMsg implements Serializable {
-        public final int key;
-        public final int value;
+    public static class ReadResponseMsg implements Serializable {
+        private final int key;
+        private final int value;
+        private final Stack<ActorRef> path;
 
-        public ClientReadResponseMsg(int key, int value) {
+        public ReadResponseMsg(int key, int value, List<ActorRef> path) {
             this.key = key;
             this.value = value;
+            //path should be unmodifiable, to follow the general akka rule
+            this.path = new Stack<>();
+            this.path.addAll(path);
         }
+
+        public int getKey() {
+            return key;
+        }
+
+        public int getValue() {
+            return value;
+        }
+
+        public Stack<ActorRef> getPath() {
+            return path;
+        }
+
+        //get last element of the path
+        public ActorRef getLast() {
+            if (path == null || path.isEmpty()) {
+                return null;
+            }
+            return path.peek();
+        }
+
+        //get path size
+        public int getPathSize() {
+            return path.size();
+        }
+
+        // Print the path
+        public String printPath() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Current path of message: [ ");
+            for (ActorRef actor : path) {
+                sb.append(actor.path().name()).append(" ");
+            }
+            sb.append(" ]");
+            return sb.toString();
+        }
+
     }
 
-    public static class CacheReadResponseMsg implements Serializable {
-        public final int key;
-        public final int value;
-        public final ActorRef L1cache;
-        public final ActorRef L2cache;
-        public final ActorRef client;
 
-        public CacheReadResponseMsg(int key, int value, ActorRef L1cache, ActorRef L2cache, ActorRef client) {
-            this.key = key;
-            this.value = value;
-            this.L1cache = L1cache;
-            this.L2cache = L2cache;
-            this.client = client;
-        }
-    }
 
     // ----------WRITE MESSAGES----------
     public static class WriteConfirmationMsg implements Serializable {
@@ -136,7 +179,8 @@ public class Message {
             this.value = value;
             this.path = path;
         }
-    }
+        }
+
 
     public static class FillMsg implements Serializable{
         public final int key;

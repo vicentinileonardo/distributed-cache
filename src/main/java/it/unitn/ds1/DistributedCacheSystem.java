@@ -274,8 +274,8 @@ public class DistributedCacheSystem {
         distributedCacheSystem.init();
         distributedCacheSystem.sendReadMsgs();
         sleep(2000);
-        distributedCacheSystem.sendWriteMsgs();
-        sleep(2000);
+        //distributedCacheSystem.sendWriteMsgs();
+        //sleep(2000);
 
 
         //client read msg
