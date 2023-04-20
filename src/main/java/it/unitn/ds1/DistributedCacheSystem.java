@@ -1,5 +1,6 @@
 package it.unitn.ds1;
 
+import akka.actor.Actor;
 import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 
@@ -24,7 +25,7 @@ public class DistributedCacheSystem {
     private HashSet<ActorRef> l2CacheActors;
     private HashSet<ActorRef> clientActors;
 
-    private ActorRef master;
+    private ActorRef crashedActor;
 
     public DistributedCacheSystem(String config_file) {
         this.config_file = config_file;
@@ -129,7 +130,6 @@ public class DistributedCacheSystem {
         }
         System.out.println("Client " + (totalClients == totalClientsNum) );
 
-        this.master = system.actorOf(Master.props(this.l1CacheActors, this.l2CacheActors, this.clientActors), "master");
     }
 
     public void buildAutoSystem(){
@@ -209,8 +209,6 @@ public class DistributedCacheSystem {
             }
             total_clients += client_num;
         }
-        this.master = system.actorOf(Master.props(this.l1CacheActors, this.l2CacheActors, this.clientActors),
-                "master");
     }
 
     public void buildSystem(){
@@ -243,18 +241,165 @@ public class DistributedCacheSystem {
     }
 
 
-    private void sendWriteMsgs() {
-        ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
+    private ActorRef getRandomActor(HashSet<ActorRef> actors){
+        ActorRef[] tmpArray = actors.toArray(new ActorRef[actors.size()]);
 
         // generate a random number
         Random rnd = new Random();
 
         // this will generate a random number between 0 and
         // HashSet.size - 1
-        int rndNumber = rnd.nextInt(this.clientActors.size());
-        ActorRef client = tmpArray[rndNumber];
-        StartWriteMsg msg = new StartWriteMsg(0, 10);
+        int rndNumber = rnd.nextInt(actors.size());
+        return tmpArray[rndNumber];
+    }
+
+    private ActorRef findActor(String actorId, HashSet<ActorRef> actors){
+        ActorRef foundActor = null;
+        for(ActorRef actor : actors){
+            if (actor.path().name().contains(actorId)){
+                foundActor  = actor;
+                break;
+            }
+        }
+        if (foundActor == null){
+            throw new NoSuchElementException();
+        }
+
+        return foundActor;
+    }
+
+    // ----------SEND READ REQUESTS----------
+    private void sendReadRequestMsg(int key) {
+        ActorRef client = getRandomActor(this.clientActors);
+        StartReadMsg msg = new StartReadMsg(key);
         client.tell(msg, ActorRef.noSender());
+    }
+
+    private void sendReadRequestMsg(int key, String clientId) {
+        StartReadMsg msg = new StartReadMsg(key);
+        ActorRef client = findActor(clientId, this.clientActors);
+        client.tell(msg, ActorRef.noSender());
+    }
+
+    private void sendCriticalReadMsg(int key) {
+        ActorRef client = getRandomActor(this.clientActors);
+        StartCriticalReadMsg msg = new StartCriticalReadMsg(key);
+        client.tell(msg, ActorRef.noSender());
+    }
+
+    private void sendCriticalReadMsg(int key, String clientId) {
+        StartCriticalReadMsg msg = new StartCriticalReadMsg(key);
+        ActorRef client = findActor(clientId, this.clientActors);
+        client.tell(msg, ActorRef.noSender());
+    }
+
+    // ----------SEND WRITE REQUESTS----------
+    private void sendWriteMsg(int key, int value) {
+        ActorRef client = getRandomActor(this.clientActors);
+        StartWriteMsg msg = new StartWriteMsg(key, value);
+        client.tell(msg, ActorRef.noSender());
+    }
+
+    private void sendWriteMsg(int key, int value, String clientId) {
+        StartWriteMsg msg = new StartWriteMsg(key, value);
+        ActorRef client = findActor(clientId, this.clientActors);
+        client.tell(msg, ActorRef.noSender());
+    }
+
+//    private void sendCriticalWriteMsg(int key, int value) {
+//        ActorRef client = getRandomClient();
+//        StartCriticalWriteMsg msg = new StartCriticalWriteMsg(key, value);
+//        client.tell(msg, ActorRef.noSender());
+//    }
+//
+//    private void sendCriticalWriteMsg(int key, int value, String clientId) {
+//        StartCriticalWriteMsg msg = new StartCriticalWriteMsg(key, value);
+//        ActorRef client = findActor(clientId, this.clientActors);
+//        client.tell(msg, ActorRef.noSender());
+//    }
+
+    // ----------SEND INFO REQUESTS----------
+
+    private void getCurrentDBData(){
+        this.databaseActor.tell(new CurrentDataMsg(), ActorRef.noSender());
+    }
+
+    private void getActorCurrentInfo(String actorId, String type){
+        ActorRef actor = null;
+        HashSet<ActorRef> searchList = new HashSet<>();
+        switch (type){
+            case "client":{
+                searchList = this.clientActors;
+            }
+            case "L1": {
+                searchList = this.l1CacheActors;
+            }
+            case "L2": {
+                searchList = this.l2CacheActors;
+            }
+        }
+
+        if (searchList.isEmpty()){
+            throw new IllegalArgumentException("Unknown type");
+        }
+
+        actor = findActor(actorId, searchList);
+        actor.tell(new InfoMsg(), ActorRef.noSender());
+    }
+
+    // ----------SEND CRASH MESSAGES----------
+    private void crashActor(){
+        ActorRef actor = getRandomActor(this.l1CacheActors);
+        CrashMsg msg = new CrashMsg();
+        actor.tell(msg, ActorRef.noSender());
+        this.crashedActor = actor;
+    }
+
+    private void crashActor(String type){
+        ActorRef actor;
+        if (type.equals("L1")){
+            actor = getRandomActor(this.l1CacheActors);
+        } else if (type.equals("L2")){
+            actor = getRandomActor(this.l1CacheActors);
+        } else {
+            throw new IllegalArgumentException("Unknown actor type");
+        }
+        CrashMsg msg = new CrashMsg();
+        actor.tell(msg, ActorRef.noSender());
+        this.crashedActor = actor;
+    }
+
+    private void crashActor(String type, String actorId){
+        ActorRef actor;
+        if (type.equals("L1")){
+            actor = findActor(actorId, this.l1CacheActors);
+        } else if (type.equals("L2")){
+            actor = findActor(actorId, this.l2CacheActors);
+        } else {
+            throw new IllegalArgumentException("Unknown actor type");
+        }
+
+        CrashMsg msg = new CrashMsg();
+        actor.tell(msg, ActorRef.noSender());
+        this.crashedActor = actor;
+    }
+
+    private void recover(){
+        this.crashedActor.tell(new RecoverMsg(), ActorRef.noSender());
+        this.crashedActor = null;
+    }
+
+    private void recover(String type, String actorId){
+        ActorRef actor;
+        if (type.equals("L1")){
+            actor = findActor(actorId, this.l1CacheActors);
+        } else if (type.equals("L2")){
+            actor = findActor(actorId, this.l2CacheActors);
+        } else {
+            throw new IllegalArgumentException("Unknown actor type");
+        }
+        actor.tell(new RecoverMsg(), ActorRef.noSender());
+        this.crashedActor = null;
     }
 
     public static void main(String[] args) throws IOException {
@@ -268,16 +413,15 @@ public class DistributedCacheSystem {
         distributedCacheSystem.buildSystem();
         System.out.println("System built!");
         distributedCacheSystem.init();
-        distributedCacheSystem.sendWriteMsgs();
+        distributedCacheSystem.sendWriteMsg(0, 10);
         try {
-            sleep(2000);
             System.out.println(">>> Press ENTER to exit <<<");
             System.in.read();
         }
-        catch (IOException ioe) {} catch (InterruptedException e) {
-            e.printStackTrace();
+        catch (IOException ioe){
+            ioe.printStackTrace();
         }
-        distributedCacheSystem.databaseActor.tell(new CurrentDataMsg(), ActorRef.noSender());
+
         distributedCacheSystem.system.terminate();
 
     }

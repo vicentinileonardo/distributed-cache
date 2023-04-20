@@ -209,10 +209,10 @@ public class Message {
             return this.clientID;
         }
     }
-    
+
     public static class StartCriticalReadMsg implements Serializable {
         private final int key;
-        
+
         public StartCriticalReadMsg(int key){
             this.key = key;
         }
@@ -324,6 +324,26 @@ public class Message {
             this.key = key;
             this.value = value;
             this.path = path;
+            this.unmodifiablePath  = Collections.unmodifiableCollection(this.path);
+            this.path.push(currentActor);
+        }
+
+        public Stack<ActorRef> getPath(){
+            Stack<ActorRef> stack = new Stack<>();
+            stack.addAll(this.unmodifiablePath);
+            return stack;
+        }
+
+        public ActorRef getDestination(){
+            return this.path.pop();
+        }
+
+        public int getKey() {
+            return this.key;
+        }
+
+        public int getValue() {
+            return this.value;
         }
 
         public Stack<ActorRef> getPath(){

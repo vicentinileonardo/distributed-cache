@@ -257,6 +257,8 @@ public class Database extends AbstractActor {
                 .match(WriteRequestMsg.class, this::onWriteRequestMsg)
                 .match(CriticalReadRequestMsg.class, this::onCriticalReadRequestMsg)
                 .match(RefillResponseMsg.class, this::onRefillResponseMsg)
+                .match(WriteRequestMsg.class, this::onWriteRequestMsg)
+                .match(CriticalReadRequestMsg.class, this::onCriticalReadRequestMsg)
                 .match(RequestUpdatedDataMsg.class, this::onRequestUpdatedDataMsg)
                 .match(RequestConnectionMsg.class, this::onRequestConnectionMsg)
                 .matchAny(o -> log.info("[DATABASE] Received unknown message from "+ getSender()))
@@ -299,6 +301,20 @@ public class Database extends AbstractActor {
         Stack<ActorRef> tmpStack = msg.getPath();
         ActorRef destination = tmpStack.pop();
         destination.tell(new CriticalReadResponseMsg(msg.getKey(), value, tmpStack), getSelf());
+    public void onReadRequestMsg(ReadRequestMsg msg) {
+        log.debug("[DATABASE] Received read request for key {} from {}",
+                msg.getKey(), getSender().path().name());
+        int value = getData(msg.getKey());
+        log.debug("[DATABASE] Read value {} for key {}", value, msg.getKey());
+    }
+
+    public void onCriticalReadRequestMsg(CriticalReadRequestMsg msg){
+        log.debug("[DATABASE][CRITICAL] Received read request for key {} from {}",
+                msg.getKey(), getSender().path().name());
+        int value = getData(msg.getKey());
+        log.debug("[DATABASE][CRITICAL] Read value {} for key {}", value, msg.getKey());
+        ActorRef destination = msg.getDestination();
+        destination.tell(new CriticalReadResponseMsg(msg.getKey(), value, msg.getPath()), getSelf());
     }
 
     // ----------WRITE MESSAGES LOGIC----------
@@ -342,6 +358,8 @@ public class Database extends AbstractActor {
     }
 
     // ----------GENERAL DATABASE MESSAGES LOGIC----------
+    public void onCurrentDataMsg(CurrentDataMsg msg) {
+        CustomPrint.debugPrint(classString, "","", "Current data in database :");
     private void onCurrentDataMsg(CurrentDataMsg msg) {
         CustomPrint.debugPrint(classString, "","", "Current data in database :");
         log.debug("[DATABASE] Current data in database:");

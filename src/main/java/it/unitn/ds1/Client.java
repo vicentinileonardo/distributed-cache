@@ -78,6 +78,8 @@ public class Client extends AbstractActor {
 
     public Integer getTimeout(String timeout){
         return this.timeouts.get(timeout);
+    public Integer getTimeout(String timeout){
+        return this.timeouts.get(timeout);
     }
 
     private void startTimeout(String type){
@@ -105,9 +107,25 @@ public class Client extends AbstractActor {
     }
 
     private void sendWriteRequestMsg(int key, int value) {
+    private void sendWriteRequestMsg(int key, int value) {
+        Stack<ActorRef> path = new Stack<>();
+        WriteRequestMsg msg = new WriteRequestMsg(key, value, path, getSelf());
+        getParent().tell(msg, getSelf());
+        sendRequest();
+        getContext().system().scheduler().scheduleOnce(
+                Duration.create(getTimeout("write"), TimeUnit.SECONDS),
+                getSelf(),
+                new TimeoutMsg(), // the message to send
+                getContext().system().dispatcher(), getSelf()
+        );
+    }
+
+    private void sendCriticalReadRequestMsg(int key){
         Stack<ActorRef> path = new Stack<>();
         path.push(getSelf());
         WriteRequestMsg msg = new WriteRequestMsg(key, value, path);
+        getParent().tell(msg, getSelf());
+        CriticalReadRequestMsg msg = new CriticalReadRequestMsg(key, path, getSelf());
         getParent().tell(msg, getSelf());
         sendRequest();
         startTimeout("write");
@@ -120,7 +138,14 @@ public class Client extends AbstractActor {
         getParent().tell(msg, getSelf());
         sendRequest();
         startTimeout("crit_read");
+        getContext().system().scheduler().scheduleOnce(
+                Duration.create(getTimeout("crit_read"), TimeUnit.SECONDS),
+                getSelf(),
+                new TimeoutMsg(), // the message to send
+                getContext().system().dispatcher(), getSelf()
+        );
     }
+
 
     private void sendCriticalWriteMsg(int key, int value) {
         Stack<ActorRef> path = new Stack<>();
@@ -141,6 +166,9 @@ public class Client extends AbstractActor {
                 .match(StartWriteMsg.class, this::onStartWriteMsg)
                 .match(StartCriticalReadMsg.class, this::onStartCriticalReadMsg)
                 .match(StartCriticalWriteMsg.class, this::onStartCriticalWriteMsg)
+                .match(WriteResponseMsg.class, this::onWriteResponseMsg)
+                .match(CriticalReadResponseMsg.class, this::onCriticalReadResponseMsg)
+                .match(StartCriticalReadMsg.class, this::onStartCriticalReadMsg)
                 .match(WriteResponseMsg.class, this::onWriteResponseMsg)
                 .match(CriticalReadResponseMsg.class, this::onCriticalReadResponseMsg)
                 .match(TimeoutMsg.class, this::onTimeoutMsg)
@@ -191,6 +219,7 @@ public class Client extends AbstractActor {
     private void onStartWriteMsg(StartWriteMsg msg) {
         log.info("[CLIENT " + id + "] Received write msg!");
         sendWriteRequestMsg(msg.getKey(), msg.getValue());
+        sendWriteRequestMsg(msg.getKey(), msg.getValue());
     }
 
     private void onWriteResponseMsg(WriteResponseMsg msg) {
@@ -211,9 +240,26 @@ public class Client extends AbstractActor {
         sendCriticalReadRequestMsg(msg.getKey());
     }
 
+    private void onWriteResponseMsg(WriteResponseMsg msg) {
+        if (!hasResponded()) {
     private void onCriticalReadResponseMsg(CriticalReadResponseMsg msg){
         if (!hasResponded()){
             receivedResponse();
+            log.info("[CLIENT {}] Successful write operation of value {} for key {}",
+                    this.id, msg.getValue(), msg.getKey());
+        }
+    }
+
+    // ----------READ MESSAGES LOGIC----------
+    private void onStartCriticalReadMsg(StartCriticalReadMsg msg){
+        sendCriticalReadRequestMsg(msg.getKey());
+    }
+
+    private void onCriticalReadResponseMsg(CriticalReadResponseMsg msg){
+        if (!hasResponded()){
+            receivedResponse();
+            log.info("[CLIENT {}][CRITICAL] Received response from read containing value {} for key {}",
+                    this.id, msg.getValue(), msg.getKey());
             log.info("[CLIENT {}][CRITICAL] Received response from read containing value {} for key {}",
                     this.id, msg.getValue(), msg.getKey());
         }
