@@ -41,6 +41,21 @@ public class Message {
         }
     }
 
+    public static class DummyMsg implements Serializable {
+        private final int payload;
+
+        public DummyMsg(int payload) {
+            this.payload = payload;
+        }
+
+        public int getPayload() {
+            return payload;
+        }
+
+    }
+
+
+
     public static class ReadRequestMsg implements Serializable {
         private final int key;
         private final Stack<ActorRef> path;

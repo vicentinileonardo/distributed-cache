@@ -8,10 +8,14 @@ import it.unitn.ds1.Message.*;
 import java.io.*;
 import java.util.*;
 
+import static akka.http.javadsl.server.Directives.concat;
 import static java.lang.Thread.sleep;
 
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.Constructor;
+
+import akka.http.javadsl.Http;
+import akka.http.javadsl.server.Route;
 
 public class DistributedCacheSystem {
 
@@ -28,6 +32,21 @@ public class DistributedCacheSystem {
 
     public DistributedCacheSystem(String config_file) {
         this.config_file = config_file;
+    }
+
+    //getter for l2 cache actors
+    public HashSet<ActorRef> getL2Caches() {
+        return l2CacheActors;
+    }
+
+    //getter for l1 cache actors
+    public HashSet<ActorRef> getL1Caches() {
+        return l1CacheActors;
+    }
+
+    //getter for client actors
+    public HashSet<ActorRef> getClients() {
+        return clientActors;
     }
 
     public void parse() throws IOException {
@@ -282,7 +301,23 @@ public class DistributedCacheSystem {
 
 
         distributedCacheSystem.databaseActor.tell(new Message.CurrentDataMsg(), ActorRef.noSender());
-        distributedCacheSystem.system.terminate();
+
+        Route getClients = new HTTPRoutes().getClients(distributedCacheSystem);
+        Route getL1Caches = new HTTPRoutes().getL1Caches(distributedCacheSystem);
+        Route getL2Caches = new HTTPRoutes().getL2Caches(distributedCacheSystem);
+        Route crashL2Caches = new HTTPRoutes().crashL2caches(distributedCacheSystem);
+        Route crashL1Caches = new HTTPRoutes().crashL1caches(distributedCacheSystem);
+        Route recoverL2Caches = new HTTPRoutes().recoverL2caches(distributedCacheSystem);
+        Route recoverL1Caches = new HTTPRoutes().recoverL1caches(distributedCacheSystem);
+
+        Route concat = concat(getClients, getL1Caches, getL2Caches, crashL2Caches, crashL1Caches, recoverL2Caches, recoverL1Caches);
+
+        Http.get(distributedCacheSystem.system)
+                .newServerAt("localhost", 3003)
+                .bind(concat);
+
+
+
 //        try {
 //            sleep(2000);
 //            System.out.println(">>> Press ENTER to exit <<<");
