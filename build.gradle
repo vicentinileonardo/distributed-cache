@@ -9,6 +9,7 @@ repositories {
 }
 
 def versions = [
+        AkkaVersion: "2.7.0",
         ScalaBinary: "2.13"
 ]
 
@@ -20,6 +21,15 @@ dependencies {
 
     //snakeyaml
     implementation 'org.yaml:snakeyaml:1.29'
+
+    implementation platform("com.typesafe.akka:akka-http-bom_${versions.ScalaBinary}:10.5.1")
+    //implementation "com.typesafe.akka:akka-actor-typed_${versions.ScalaBinary}:${versions.AkkaVersion}"
+    implementation "com.typesafe.akka:akka-stream_${versions.ScalaBinary}:${versions.AkkaVersion}"
+    implementation "com.typesafe.akka:akka-http_${versions.ScalaBinary}"
+
+    implementation group: 'com.typesafe.akka', name: 'akka-http-jackson_2.13', version: '10.2.6'
+    implementation group: 'com.fasterxml.jackson.core', name: 'jackson-databind', version: '2.12.5'
+
 }
 
 compileJava {

@@ -191,6 +191,10 @@ public class Cache extends AbstractActor{
         sendInitMsg();
     }
 
+    private void onDummyMsg(Message.DummyMsg msg){
+        CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Received dummy msg with payload: " + String.valueOf(msg.getPayload()));
+    }
+
     private void sendInitMsg(){
         Message.InitMsg msg = new Message.InitMsg(getSelf(), this.type_of_cache.toString());
         parent.tell(msg, getSelf());
@@ -211,6 +215,7 @@ public class Cache extends AbstractActor{
                 .match(Message.ReadResponseMsg.class, this::onReadResponseMsg)
                 .match(Message.WriteMsg.class, this::onWriteMsg)
                 .match(Message.WriteConfirmationMsg.class, this::onWriteConfirmationMsg)
+                .match(Message.DummyMsg.class, this::onDummyMsg)
                 .matchAny(o -> System.out.println("Cache " + id +" received unknown message from " + getSender()))
                 .build();
     }

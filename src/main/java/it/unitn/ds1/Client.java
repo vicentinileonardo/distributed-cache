@@ -37,6 +37,11 @@ public class Client extends AbstractActor {
         return Props.create(Client.class, () -> new Client(id, parent, timeouts, l2Caches));
     }
 
+    //getter for id
+    public int getId() {
+        return this.id;
+    }
+
     // ----------PARENT LOGIC----------
 
     public ActorRef getParent() {
