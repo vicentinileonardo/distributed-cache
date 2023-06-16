@@ -291,14 +291,6 @@ public class DistributedCacheSystem {
         distributedCacheSystem.buildSystem();
         System.out.println("System built!");
         distributedCacheSystem.init();
-        distributedCacheSystem.sendReadMsgs();
-        sleep(2000);
-        //distributedCacheSystem.sendWriteMsgs();
-        //sleep(2000);
-
-
-        //client read msg
-
 
         distributedCacheSystem.databaseActor.tell(new Message.CurrentDataMsg(), ActorRef.noSender());
 
@@ -315,6 +307,18 @@ public class DistributedCacheSystem {
         Http.get(distributedCacheSystem.system)
                 .newServerAt("localhost", 3003)
                 .bind(concat);
+
+
+        distributedCacheSystem.sendReadMsgs();
+        sleep(150000);
+        distributedCacheSystem.sendReadMsgs();
+        //distributedCacheSystem.sendWriteMsgs();
+        //sleep(2000);
+
+
+        //client read msg
+
+
 
 
 

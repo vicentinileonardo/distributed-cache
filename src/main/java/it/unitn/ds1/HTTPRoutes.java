@@ -8,6 +8,8 @@ import akka.http.javadsl.server.Route;
 import java.util.HashSet;
 import java.util.List;
 
+import it.unitn.ds1.Message.*;
+
 import static akka.http.javadsl.server.PathMatchers.segment;
 
 import akka.http.javadsl.marshallers.jackson.Jackson;
@@ -107,7 +109,7 @@ public class HTTPRoutes extends AllDirectives {
                     message.put("message", value);
                     return completeOK(message, Jackson.marshaller());
                 }
-                l2Cache.tell(new Message.DummyMsg(42), ActorRef.noSender());
+                l2Cache.tell(new CrashMsg(), ActorRef.noSender());
                 ObjectNode message = JsonNodeFactory.instance.objectNode();
                 String value = "Crash message sent to L2 cache: " + id;
                 CustomPrint.print(classString, "", "", value);
@@ -138,7 +140,7 @@ public class HTTPRoutes extends AllDirectives {
                     message.put("message", value);
                     return completeOK(message, Jackson.marshaller());
                 }
-                l1Cache.tell(new Message.DummyMsg(42), ActorRef.noSender());
+                l1Cache.tell(new CrashMsg(), ActorRef.noSender());
                 ObjectNode message = JsonNodeFactory.instance.objectNode();
                 String value = "Crash message sent to L1 cache: " + id;
                 CustomPrint.print(classString, "", "", value);
@@ -169,7 +171,7 @@ public class HTTPRoutes extends AllDirectives {
                     message.put("message", value);
                     return completeOK(message, Jackson.marshaller());
                 }
-                l2Cache.tell(new Message.DummyMsg(24), ActorRef.noSender());
+                l2Cache.tell(new RecoverMsg(), ActorRef.noSender());
                 ObjectNode message = JsonNodeFactory.instance.objectNode();
                 String value = "Recovery message sent to L2 cache: " + id;
                 CustomPrint.print(classString, "", "", value);
@@ -200,7 +202,7 @@ public class HTTPRoutes extends AllDirectives {
                     message.put("message", value);
                     return completeOK(message, Jackson.marshaller());
                 }
-                l1Cache.tell(new Message.DummyMsg(24), ActorRef.noSender());
+                l1Cache.tell(new RecoverMsg(), ActorRef.noSender());
                 ObjectNode message = JsonNodeFactory.instance.objectNode();
                 String value = "Recovery message sent to L1 cache: " + id;
                 CustomPrint.print(classString, "", "", value);

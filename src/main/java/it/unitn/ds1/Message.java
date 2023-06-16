@@ -1,6 +1,5 @@
 package it.unitn.ds1;
 
-import akka.actor.Actor;
 import akka.actor.ActorRef;
 
 import java.io.Serializable;
@@ -24,23 +23,145 @@ public class Message {
         }
     }
 
+    public static class TimeoutMsg implements Serializable{
+        public TimeoutMsg() {
+        }
+    }
+
+    public static class InfoMsg implements Serializable{
+        public InfoMsg() {}
+    }
+
+    // ----------CRASH RELATED MESSAGES----------
+    public static class CrashMsg implements Serializable{
+        public CrashMsg() {}
+    }
+
+    public static class RecoverMsg implements Serializable{
+        public RecoverMsg() {}
+    }
+
+    public static class RequestDataRecoverMsg implements Serializable{
+        public RequestDataRecoverMsg() {}
+    }
+
+    public static class ResponseDataRecoverMsg implements Serializable{
+        private final Map<Integer, Integer> data;
+        private final ActorRef parent;
+
+        public ResponseDataRecoverMsg(Map<Integer, Integer> data, ActorRef parent) {
+            this.parent = parent;
+            this.data = data;
+        }
+
+        public Map<Integer, Integer> getData() {
+            return this.data;
+        }
+
+        public ActorRef getParent() {
+            return this.parent;
+        }
+    }
+
+    public static class RequestUpdatedDataMsg implements Serializable{
+        private final Set<Integer> keys;
+
+        public RequestUpdatedDataMsg(Set<Integer> keys) {
+            this.keys = keys;
+        }
+
+        public Set<Integer> getKeys() {
+            return this.keys;
+        }
+    }
+
+    public static class ResponseUpdatedDataMsg implements Serializable{
+        private final Map<Integer, Integer> data;
+
+        public ResponseUpdatedDataMsg(Map<Integer, Integer> data) {
+            this.data = data;
+        }
+
+        public Map<Integer, Integer> getData() {
+            return this.data;
+        }
+    }
+
+    public static class UpdateDataMsg implements Serializable{
+        private final Map<Integer, Integer> data;
+
+        public UpdateDataMsg(Map<Integer, Integer> data){
+            this.data = data;
+        }
+
+        public Map<Integer, Integer> getData() {
+            return this.data;
+        }
+    }
+
+    public static class RequestConnectionMsg implements Serializable{
+        private String type;
+        public RequestConnectionMsg(){}
+
+        public RequestConnectionMsg(String type){
+            this.type = type;
+        }
+
+        public String getType() {
+            return this.type;
+        }
+    }
+
+    public static class ResponseConnectionMsg implements Serializable{
+        private String response;
+
+        public ResponseConnectionMsg(){}
+
+        public ResponseConnectionMsg(String response){
+            this.response = response;
+        }
+
+        public String getResponse() {
+            return this.response;
+        }
+    }
+
+    public static class TimeoutElapsedMsg implements Serializable{
+        private int key;
+        private int value;
+
+        public TimeoutElapsedMsg(){}
+
+        public TimeoutElapsedMsg(int key, int value){
+            this.key = key;
+            this.value = value;
+        }
+
+        public void setKey(int key){
+            this.key = key;
+        }
+
+        public void setValue(int value){
+            this.value = value;
+        }
+
+        public int getValue(){
+            return this.value;
+        }
+
+        public int getKey(){
+            return this.key;
+        }
+    }
+
+
     // ----------DATABASE GENERAL MESSAGES----------
     public static class CurrentDataMsg implements Serializable {}
 
     public static class DropDatabaseMsg implements Serializable {}
 
+
     // ----------READ MESSAGES----------
-
-    public static class ClientReadRequestMsg implements Serializable {
-        public final int key;
-        public final ActorRef client; //this or clientID?
-
-        public ClientReadRequestMsg(int key, ActorRef client) {
-            this.key = key;
-            this.client = client;
-        }
-    }
-
     public static class DummyMsg implements Serializable {
         private final int payload;
 
@@ -54,7 +175,18 @@ public class Message {
 
     }
 
+    //NOTE: test if really needed
+    public static class StartReadMsg implements Serializable {
+        private final int key;
 
+        public StartReadMsg(int key){
+            this.key = key;
+        }
+
+        public int getKey() {
+            return this.key;
+        }
+    }
 
     public static class ReadRequestMsg implements Serializable {
         private final int key;
@@ -205,4 +337,14 @@ public class Message {
             this.value = value;
         }
     }
+
+
+
+
+
+
+
+
+
+
 }
