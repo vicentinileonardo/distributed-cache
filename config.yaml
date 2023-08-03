@@ -6,7 +6,7 @@ clients:
   customNum: !!int 1
   timeouts:
     - type: !!str read
-      value: !!int 20
+      value: !!int 100
     - type: !!str crit_read
       value: !!int 10
     - type: !!str write
@@ -17,10 +17,10 @@ clients:
       value: !!int 10
 l2Caches:
   maxNum: !!int 10
-  customNum: !!int 2
+  customNum: !!int 5
   timeouts:
     - type: !!str read
-      value: !!int 10
+      value: !!int 20
     - type: !!str crit_read
       value: !!int 10
     - type: !!str write
@@ -29,7 +29,7 @@ l2Caches:
       value: !!int 10
 l1Caches:
   maxNum: !!int 10
-  customNum: !!int 2
+  customNum: !!int 5
   timeouts:
     - type: !!str read
       value: !!int 10

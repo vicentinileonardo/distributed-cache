@@ -4,9 +4,14 @@ import akka.actor.*;
 
 import java.util.*;
 
+import akka.event.Logging;
+import akka.event.LoggingAdapter;
+
 import it.unitn.ds1.Message.*;
 
 public class Database extends AbstractActor {
+
+    private final LoggingAdapter log = Logging.getLogger(getContext().getSystem(), this);
 
     private int id;
 
@@ -105,10 +110,14 @@ public class Database extends AbstractActor {
 
         populateDatabase();
 
-        CustomPrint.print(classString,"",  ""," Started!");
-        CustomPrint.print(classString,"",  "", "Initial data in database " + id + ":");
+        //CustomPrint.print(classString,"",  ""," Started!");
+        log.info("[DATABASE " + id + "] Started!");
+
+        //CustomPrint.print(classString,"",  "", "Initial data in database " + id + ":");
+        log.info("[DATABASE " + id + "] Initial data in database " + id + ":");
         for (Map.Entry<Integer, Integer> entry : data.entrySet()) {
-            CustomPrint.print(classString,"",  "", "Key = " + entry.getKey() + ", Value = " + entry.getValue());
+            //CustomPrint.print(classString,"",  "", "Key = " + entry.getKey() + ", Value = " + entry.getValue());
+            log.info("[DATABASE " + id + "] Key = " + entry.getKey() + ", Value = " + entry.getValue());
         }
     }
 
@@ -116,7 +125,8 @@ public class Database extends AbstractActor {
         for (int i = 0; i < 10; i++) {
             data.put(i, rnd.nextInt(200));
         }
-        CustomPrint.debugPrint(classString, "Database " + id + " populated");
+        //CustomPrint.debugPrint(classString, "Database " + id + " populated");
+        log.info("[DATABASE " + id + "] Populated");
     }
 
     public boolean isDataPresent(int key){
@@ -127,19 +137,23 @@ public class Database extends AbstractActor {
         return data.get(key);
     }
 
-
     public void onReadRequestMsg(Message.ReadRequestMsg readRequestMsg){
-        CustomPrint.debugPrint(classString, "Database " + id + " received a read request for key " + readRequestMsg.getKey() + " from cache " + getSender().path().name());
+        //CustomPrint.debugPrint(classString, "Database " + id + " received a read request for key " + readRequestMsg.getKey() + " from cache " + getSender().path().name());
+        log.info("[DATABASE " + id + "] Received a read request for key " + readRequestMsg.getKey() + " from cache " + getSender().path().name());
 
         if (isDataPresent(readRequestMsg.getKey())){
+
+            log.info("[DATABASE " + id + "] Data for key " + readRequestMsg.getKey() + " is present in database");
+
             //send response to child (l1 cache) (or l2 cache, if crashes are considered)
             ActorRef child = readRequestMsg.getLast();
 
             int value = getData(readRequestMsg.getKey());
 
-            Message.ReadResponseMsg readResponseMsg = new Message.ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath());
+            ReadResponseMsg readResponseMsg = new ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath(), readRequestMsg.getRequestId());
             child.tell(readResponseMsg, getSelf());
-            CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey() + " and sent it to cache " + child.path().name());
+            //CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey() + " and sent it to cache " + child.path().name());
+            log.info("[DATABASE " + id + "] Read value " + value + " for key " + readRequestMsg.getKey() + " and sent it to cache " + child.path().name());
 
         } else { // data not present, to be decided if the scenario is possible
             //as a matter of fact the client should pick key value that are stored maybe in a config file, to be sure the key is present at least in the database
@@ -147,9 +161,10 @@ public class Database extends AbstractActor {
             ActorRef child = readRequestMsg.getLast();
             int value = -1;
 
-            Message.ReadResponseMsg readResponseMsg = new Message.ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath());
+            ReadResponseMsg readResponseMsg = new ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath(), readRequestMsg.getRequestId());
             child.tell(readResponseMsg, getSelf());
-            CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey());
+            //CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey());
+            log.info("[DATABASE " + id + "] Read value " + value + " for key " + readRequestMsg.getKey());
 
         }
     }
@@ -193,8 +208,7 @@ public class Database extends AbstractActor {
             throw new InvalidMessageException("Message to wrong destination!");
         }
         addL1_cache(msg.id);
-        System.out.println("[DATABASE]" +
-                " Added " + getSender() + " as a child");
+        log.info("[DATABASE " + id + "] Added " + getSender().path().name() + " as a child");
     }
 
     // ----------READ MESSAGES LOGIC----------
@@ -219,16 +233,20 @@ public class Database extends AbstractActor {
 
     // ----------GENERAL DATABASE MESSAGES LOGIC----------
     public void onCurrentDataMsg(CurrentDataMsg msg) {
-        CustomPrint.debugPrint(classString, "Current data in database " + id + ":");
+        //CustomPrint.debugPrint(classString, "Current data in database " + id + ":");
+        log.info("[DATABASE " + id + "] Current data in database " + id + ":");
         for (Map.Entry<Integer, Integer> entry : data.entrySet()) {
-            CustomPrint.debugPrint(classString, "Key = " + entry.getKey() + ", Value = " + entry.getValue());
+            //CustomPrint.debugPrint(classString, "Key = " + entry.getKey() + ", Value = " + entry.getValue());
+            log.info("[DATABASE " + id + "] Key = " + entry.getKey() + ", Value = " + entry.getValue());
         }
     }
 
     // DEBUG ONLY: assumption is that the database is always up
     public void onDropDatabaseMsg(DropDatabaseMsg msg) {
-        CustomPrint.debugPrint(classString, "Database drop request");
+        //CustomPrint.debugPrint(classString, "Database drop request");
+        log.info("[DATABASE " + id + "] Database drop request");
         data.clear();
-        CustomPrint.debugPrint(classString, "Database " + id + " dropped");
+        //CustomPrint.debugPrint(classString, "Database " + id + " dropped");
+        log.info("[DATABASE " + id + "] Database dropped");
     }
 }

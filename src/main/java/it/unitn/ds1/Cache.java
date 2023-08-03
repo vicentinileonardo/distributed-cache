@@ -5,6 +5,8 @@ import akka.actor.AbstractActor;
 import akka.actor.InvalidMessageException;
 import akka.actor.Props;
 import scala.concurrent.duration.Duration;
+
+import java.sql.Time;
 import java.util.concurrent.TimeUnit;
 
 import java.io.IOException;
@@ -24,10 +26,63 @@ public class Cache extends AbstractActor{
     private final int id;
 
     private boolean crashed = false;
-    private Map.Entry<ActorRef, Boolean> response = new AbstractMap.SimpleEntry<>(null, false);
+
     private final TYPE type_of_cache;
 
     private Map<Integer, Integer> data = new HashMap<>();
+
+    public class Request {
+
+        private final long requestId;
+        private final int key;
+        private int value;
+        private final String type;
+        private final String requesterType;
+        private ActorRef requester;
+        private boolean isFulfilled = false;
+
+        public Request(String type, String requesterType, ActorRef requester, int key, long requestId) {
+            this.type = type;
+            this.requesterType = requesterType;
+            this.requester = requester;
+            this.key = key;
+            this.requestId = requestId;
+        }
+
+        long getRequestId() {
+            return requestId;
+        }
+
+        public boolean isFulfilled() {
+            return isFulfilled;
+        }
+
+        void setValue (int value) {
+            this.value = value;
+        }
+
+        void setFulfilled () {
+            this.isFulfilled = true;
+        }
+
+        //toString method for debugging
+        @Override
+        public String toString() {
+            return "Request{" +
+                    "requestId=" + requestId +
+                    ", key=" + key +
+                    ", value=" + value +
+                    ", type='" + type + '\'' +
+                    ", requesterType='" + requesterType + '\'' +
+                    ", requester=" + requester +
+                    ", isFulfilled=" + isFulfilled +
+                    '}';
+        }
+
+    }
+
+    //map of request where the key is the id of the request and the value is the request itself
+    private Map<Long, Request> requests = new HashMap<>();
 
     private HashSet<Integer> recoveredKeys = new HashSet<>();
     private HashMap<ActorRef, Map<Integer, Integer>> recoveredValuesForChild = new HashMap<>();
@@ -123,8 +178,7 @@ public class Cache extends AbstractActor{
     private void recover() {
         this.crashed = false;
         getContext().become(createReceive());
-        log.info("[{} CACHE {}] Recovery process started!",
-                this.type_of_cache.toString(), String.valueOf(this.id));
+        log.info("[{} CACHE {}] Recovery process started!", this.type_of_cache.toString(), String.valueOf(this.id));
     }
 
     //----------DATA LOGIC----------
@@ -215,23 +269,29 @@ public class Cache extends AbstractActor{
         this.timeouts.put(type, value);
     }
 
-    private boolean hasResponded() { return this.response.getValue(); }
-
-    private ActorRef getRequestSender() { return this.response.getKey(); }
-
-    private void startTimeout(String type) {
-        getContext().getSystem().getScheduler().scheduleOnce(
-                Duration.create(timeouts.get(type) * 1000, TimeUnit.MILLISECONDS),
-                getSelf(),
-                new TimeoutMsg(), // the message to send
-                getContext().system().dispatcher(),
-                getSelf()
+    private void startTimeout(String type, long requestId) {
+        log.info("[{} CACHE {}] Starting timeout for " + type + " operation, " + getTimeout(type) + " seconds. ", this.type_of_cache.toString(), String.valueOf(this.id));
+        getContext().system().scheduler().scheduleOnce(
+            Duration.create(getTimeout(type), TimeUnit.SECONDS),
+            getSelf(),
+            new TimeoutMsg(type, requestId, getParent().path().name()),
+            getContext().system().dispatcher(),
+            getSelf()
         );
     }
 
-    private void sendRequest(ActorRef sender) { this.response = new AbstractMap.SimpleEntry<>(sender, false);}
+    private void receivedReadRequest(ActorRef requester, String requesterType, ReadRequestMsg msg) {
+        Request request = new Request("read", requesterType, requester, msg.getKey(), msg.getRequestId());
+        System.out.println("["+this.type_of_cache+" CACHE " + this.id + "]" + " with id " + msg.getRequestId());
+        System.out.println("["+this.type_of_cache+" CACHE " + this.id + "]" + " with id(2) " + request.getRequestId()); //this resulted in 0 instead of the same value as above
+        this.requests.put(request.getRequestId(), request);
+        log.info("[{} CACHE {}] Put read request in hashmap", this.type_of_cache.toString(), String.valueOf(this.id));
+    }
 
-    public void receivedResponse() { this.response = new AbstractMap.SimpleEntry<>(null, true);}
+    public void sentReadResponse(long requestId) {
+        this.requests.get(requestId).setFulfilled();
+        log.info("[{} CACHE {}] Set read request as fulfilled", this.type_of_cache.toString(), String.valueOf(this.id));
+    }
 
     private void waitSomeTime(int time) {
 
@@ -239,6 +299,16 @@ public class Cache extends AbstractActor{
         long timeSpent = 0;
         while (timeSpent <= time * 1000L) {
             timeSpent = System.currentTimeMillis() - t0;
+        }
+    }
+
+    public void addDelayInSeconds(int seconds) {
+        try {
+            log.info("[{} CACHE {}] Adding delay of {} seconds", this.type_of_cache.toString(), String.valueOf(this.id), String.valueOf(seconds));
+            Thread.sleep(seconds * 1000);
+        } catch (InterruptedException e) {
+            log.error("[{} CACHE {}] Error while adding delay!", this.type_of_cache.toString(), String.valueOf(this.id));
+            e.printStackTrace();
         }
     }
 
@@ -256,15 +326,14 @@ public class Cache extends AbstractActor{
     }
 
     private void sendInitMsg(){
-        Message.InitMsg msg = new Message.InitMsg(getSelf(), this.type_of_cache.toString());
+        InitMsg msg = new InitMsg(getSelf(), this.type_of_cache.toString());
         parent.tell(msg, getSelf());
-
-        String log_msg = "["+this.type_of_cache+" Cache "+this.id+"] Sent initialization msg to " + this.parent;
-        System.out.println(log_msg);
+        log.info("[{} CACHE {}] Sent initialization msg to {}", this.type_of_cache.toString(), String.valueOf(this.id), this.parent.path().name());
     }
 
     private void onDummyMsg(Message.DummyMsg msg){
-        CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Received dummy msg with payload: " + String.valueOf(msg.getPayload()));
+        //CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Received dummy msg with payload: " + String.valueOf(msg.getPayload()));
+        log.info("[{} CACHE {}] Received dummy msg with payload: {}", this.type_of_cache.toString(), String.valueOf(this.id), String.valueOf(msg.getPayload()));
     }
 
     // ----------RECEIVE LOGIC----------
@@ -302,36 +371,76 @@ public class Cache extends AbstractActor{
     }
 
     // ----------TIMEOUT MESSAGE LOGIC----------
+
+    //Use case: L2 cache receives timeout msg from L1 cache, it means that its L1 is crashed, so it connects to the database
+    //assumption: database is always available, so a cache cannot timeout while waiting for a response from the database
+    //(if we consider the worst network delay to be less than read timeout)
     private void onTimeoutMsg(TimeoutMsg msg) {
-        if (!hasResponded()) {
-            log.info("[{} CACHE {}] Received timeout msg from {}!",
-                    getCacheType(), getID(), getSender().path().name());
-            receivedResponse();
-            log.info("[{} CACHE {}] Connecting to DATABASE",
-                    getCacheType().toString(), String.valueOf(getID()));
-            setParent(getDatabase());
-            getParent().tell(new RequestConnectionMsg("L2"), getSelf());
-            getRequestSender().tell(new TimeoutElapsedMsg(), getSelf());
+
+        //TODO: add differentiation type and client inside the timeout msg
+
+        //check if requestid in hashmap of requests is already fulfilled
+        if (this.requests.get(msg.getRequestId()).isFulfilled()) {
+            log.info("[{} CACHE {}] Received timeout msg for fulfilled request", getCacheType().toString(), String.valueOf(getID()));
+            log.info("[{} CACHE {}] Ignoring timeout msg", getCacheType().toString(), String.valueOf(getID()));
+            return;
+        }
+
+        switch (msg.getType()) {
+            case "read":
+                log.info("[{} CACHE {}] Received timeout msg for read request operation", getCacheType().toString(), String.valueOf(getID()));
+
+                // if L2 cache, connect to database
+                if(getCacheType().equals(TYPE.L2)){
+                    log.info("[{} CACHE {}] Connecting to DATABASE", getCacheType().toString(), String.valueOf(getID()));
+                    setParent(getDatabase());
+                    getParent().tell(new RequestConnectionMsg("L2"), getSelf());
+
+                    //tell the client that the L1 cache is not available, so this L2 is connecting to the database, so client should wait more, maybe extend the timeout
+                    //ActorRef client = msg.getClient();
+                    //client.tell(new TimeoutElapsedMsg(), getSelf());
+                    //log.info("[{} CACHE {}] Sent timeout elapsed msg to {}", getCacheType().toString(), String.valueOf(getID()), client.path().name());
+
+                }
+
+                break;
+
+            default:
+                log.info("[{} CACHE {}] Received timeout msg for unknown operation", getCacheType().toString(), String.valueOf(getID()));
+                break;
         }
     }
 
     private void onRequestConnectionMsg(RequestConnectionMsg msg) {
-        log.info("[{} CACHE {}] Received request connection msg from {}",
-                getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
+        log.info("[{} CACHE {}] Received request connection msg from {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
         addChild(getSender());
+
+        //possible improvement: accept only if the children are less than the maximum number of children
         getSender().tell(new ResponseConnectionMsg("ACCEPTED"), getSelf());
+        log.info("[{} CACHE {}] Sent response connection msg to {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
     }
 
     private void onTimeoutElapsedMsg(TimeoutElapsedMsg msg) {}
-
 
     // ----------READ MESSAGES LOGIC----------
 
     public void onReadRequestMsg(Message.ReadRequestMsg readRequestMsg){
 
-        CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Received read request msg from " + getSender());
-        log.info("[{} CACHE {}] Received read request msg from {}",
-                getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
+        //CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Received read request msg from " + getSender());
+        log.info("[{} CACHE {}] Received read request msg from {}, asking for key {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name(), readRequestMsg.getKey());
+
+        // check size of path
+        // 1 means that the request is coming from a client -> LL: [Client]
+        // 2 means that the request is coming from a L2 cache -> LL: [Client, L2_Cache]
+        if(readRequestMsg.getPathSize() == 1) {
+            receivedReadRequest(getSender(), "client", readRequestMsg);
+        } else if (readRequestMsg.getPathSize() == 2) {
+            receivedReadRequest(getSender(), "L2", readRequestMsg);
+        } else {
+            log.error("[{} CACHE {}] Probably wrong route!",  getCacheType().toString(), String.valueOf(getID()));
+        }
+
+        log.info("[{} CACHE {}] Request log: {}", getCacheType().toString(), String.valueOf(getID()), this.requests.toString());
 
         //if data is present
         if (isDataPresent(readRequestMsg.getKey())){
@@ -340,45 +449,57 @@ public class Cache extends AbstractActor{
             // 1 means that the request is coming from a client -> LL: [Client]
             // 2 means that the request is coming from a L2 cache -> LL: [Client, L2_Cache]
             if(readRequestMsg.getPathSize() != 1 && readRequestMsg.getPathSize() != 2){
-                CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Probably wrong route!");
-                throw new IllegalArgumentException("Probably wrong route!");
+                //CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Probably wrong route!");
+                log.error("[{} CACHE {}] Probably wrong route!",  getCacheType().toString(), String.valueOf(getID()));
                 //TODO: send special error message to client or master
             }
 
-            //send response to child (either client or l2 cache)
+            //response to be sent to child (either client or l2 cache)
             ActorRef child = readRequestMsg.getLast();
 
             //check if child is between the children of this cache
             if (!getChildren().contains(child)){
-                CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Child not present in children list!");
-                throw new IllegalArgumentException("Child not present in children list!");
+                //CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Child not present in children list!");
+                log.error("[{} CACHE {}] Child not present in children list!",  getCacheType().toString(), String.valueOf(getID()));
                 //TODO: send special error message to client or master
             }
 
             int value = getData(readRequestMsg.getKey());
 
-            Message.ReadResponseMsg response = new Message.ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath());
-            child.tell(response, getSelf());
+            log.info("[{} CACHE {}] Data is present in cache; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), readRequestMsg.getKey(), value);
 
-        } else { // data not present in cache
-            //send cache read request to parent (L1 cache or database)
+            ReadResponseMsg response = new ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath(), readRequestMsg.getRequestId());
+            child.tell(response, getSelf());
+            log.info("[{} CACHE {}] Sent read response msg to {}", getCacheType().toString(), String.valueOf(getID()), child.path().name());
+
+        }
+        else { // data not present in cache
+            //send read request to parent (L1 cache or database)
+
+            log.info("[{} CACHE {}] Data is not present in cache; key:{}", getCacheType().toString(), String.valueOf(getID()), readRequestMsg.getKey());
+
+            addDelayInSeconds(20);
 
             //adding cache to path
             Stack<ActorRef> newPath = new Stack<>();
             newPath.addAll(readRequestMsg.getPath());
             newPath.add(getSelf());
 
-            Message.ReadRequestMsg upperReadRequestMsg = new Message.ReadRequestMsg(readRequestMsg.getKey(), newPath);
+            ReadRequestMsg upperReadRequestMsg = new ReadRequestMsg(readRequestMsg.getKey(), newPath, readRequestMsg.getRequestId());
             getParent().tell(upperReadRequestMsg, getSelf());
+            log.info("[{} CACHE {}] Sent read request msg to {}", getCacheType().toString(), String.valueOf(getID()), getParent().path().name());
+
+            startTimeout("read", readRequestMsg.getRequestId());
         }
     }
 
-    //database to l1 cache
-    // or l1 cache to l2 cache
-    public void onReadResponseMsg(Message.ReadResponseMsg readResponseMsg){
+    //response from database to l1 cache
+    //or response from l1 cache to l2 cache
+    public void onReadResponseMsg(ReadResponseMsg readResponseMsg){
 
         //add data to cache
         addData(readResponseMsg.getKey(), readResponseMsg.getValue());
+        log.info("[{} CACHE {}] Added data to cache; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), readResponseMsg.getKey(), readResponseMsg.getValue());
 
         //check size of path:
         // 2 means that the response is for a client -> LL:[Client, L2_Cache]
@@ -386,8 +507,8 @@ public class Cache extends AbstractActor{
         // other values are not allowed
 
         if(readResponseMsg.getPathSize() != 2 && readResponseMsg.getPathSize() != 3){
-            CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Probably wrong route!");
-            throw new IllegalArgumentException("Probably wrong route!");
+            //CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Probably wrong route!");
+            log.info("[{} CACHE {}] Probably wrong route!", getCacheType().toString(), String.valueOf(getID()));
             //TODO: send special error message to client or master
         }
 
@@ -404,14 +525,23 @@ public class Cache extends AbstractActor{
         //check if child is between the children of this cache
         if (!getChildren().contains(child)) {
             //CustomPrint.print(classString, type_of_cache.toString() + " ", String.valueOf(id), " Child not present in children list!");
-            log.info("[{} CACHE {}] Child not present in children list!",
-                    getCacheType().toString(), String.valueOf(getID()));
-            throw new IllegalArgumentException("Child not present in children list!");
+            log.info("[{} CACHE {}] Child not present in children list!", getCacheType().toString(), String.valueOf(getID()));
         }
 
-        Message.ReadResponseMsg response = new Message.ReadResponseMsg(readResponseMsg.getKey(), readResponseMsg.getValue(), newPath);
+        //send response to child
+        ReadResponseMsg response = new ReadResponseMsg(readResponseMsg.getKey(), readResponseMsg.getValue(), newPath, readResponseMsg.getRequestId());
         child.tell(response, getSelf());
+        log.info("[{} CACHE {}] Sent read response msg to {}", getCacheType().toString(), String.valueOf(getID()), child.path().name());
+
+        //System.out.println("TEST, cache" + getCacheType()+ getID()+ readResponseMsg.getRequestId());
+        sentReadResponse(readResponseMsg.getRequestId());
+
+
+        log.info("[{} CACHE {}] Request completed", getCacheType().toString(), String.valueOf(getID()));
+        log.info("[{} CACHE {}] All Requests: {}", getCacheType().toString(), String.valueOf(getID()), this.requests.toString());
     }
+
+
 
 
 
@@ -452,8 +582,7 @@ public class Cache extends AbstractActor{
             throw new InvalidMessageException("Message to wrong destination!");
         }
         addChild(msg.id);
-        String log_msg = "["+this.type_of_cache+" Cache "+this.id+"] Added " + getSender() + " as a child";
-        System.out.println(log_msg);
+        log.info("[{} CACHE {}] Added {} as a child", getCacheType(), getID(), getSender().path().name());
     }
 
     private void onInfoMsg (InfoMsg msg){

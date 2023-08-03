@@ -19,13 +19,12 @@ public class Client extends AbstractActor {
 
     private int id;
 
-    //DEBUG ONLY: assumption that clients are always up
-    private boolean crashed = false;
-    private boolean responded = true;
+    private boolean isResponseReceived = true;
 
     private HashSet<ActorRef> L2_caches = new HashSet<>();
 
     private ActorRef parent;
+    private boolean isConnectedToParent = true;
 
     private HashMap<String, Integer> timeouts = new HashMap<>();
 
@@ -38,7 +37,7 @@ public class Client extends AbstractActor {
         private final int key;
         private int value;
         private boolean finished;
-        private boolean success;
+        //private boolean success; //maybe not needed
         private final long startTime = System.currentTimeMillis();
         private long endTime;
 
@@ -46,7 +45,6 @@ public class Client extends AbstractActor {
             this.operation = operation;
             this.key = key;
             this.finished = false;
-            this.success = false;
         }
 
         // Getters for the instance variables
@@ -66,10 +64,6 @@ public class Client extends AbstractActor {
             return finished;
         }
 
-        public boolean isSuccess() {
-            return success;
-        }
-
         public long getStartTime() {
             return startTime;
         }
@@ -78,8 +72,8 @@ public class Client extends AbstractActor {
             return endTime;
         }
 
-        public void setEndTime(long endTime) {
-            this.endTime = endTime;
+        public void setEndTime() {
+            this.endTime = System.currentTimeMillis();
         }
 
         public long getDuration() {
@@ -96,18 +90,13 @@ public class Client extends AbstractActor {
             this.finished = finished;
         }
 
-        public void setSuccess(boolean success) {
-            this.success = success;
-        }
-
         public String toString() {
-            return "Operation: " + operation + ", Key: " + key + ", Value: " + value + ", Finished: " + finished + ", Success: " + success + ", Start Time: " + startTime + ", End Time: " + endTime + ", Duration: " + getDuration();
+            return "Operation: " + operation + ", Key: " + key + ", Value: " + value + ", Finished: " + finished  + ", Start Time: " + startTime + ", End Time: " + endTime + ", Duration: " + getDuration() + "ms";
         }
 
     }
 
     private List<ClientOperation> operations = new ArrayList<>();
-
 
     public Client(int id, ActorRef parent, List<TimeoutConfiguration> timeouts, HashSet<ActorRef> l2Caches) {
         this.id = id;
@@ -165,34 +154,43 @@ public class Client extends AbstractActor {
         this.timeouts.put(type, value);
     }
 
-    public void startTimeout(String type) {
+    //client could receive only 1 timeout message at a time (per type maybe)
+    public void startTimeout(String type, String connectionDestination) {
+        log.info("[CLIENT " + id + "] Starting timeout for " + type + " operation, " + getTimeout(type) + " seconds");
         getContext().system().scheduler().scheduleOnce(
-                Duration.create(getTimeout(type), TimeUnit.SECONDS),
-                getSelf(),
-                new TimeoutMsg(), // the message to send
-                getContext().system().dispatcher(),
-                getSelf()
+            Duration.create(getTimeout(type), TimeUnit.SECONDS),
+            getSelf(),
+            new TimeoutMsg(type, connectionDestination), // the message to send
+            getContext().system().dispatcher(),
+            getSelf()
         );
+
+        //store current active timeout
+        //activeTimeouts.put(type, true);
+
     }
 
-    private boolean hasResponded() {
-        return this.responded;
-    }
+    //data structure to store current active timeouts, ex: <"connection": true>
+    //private HashMap<String, Boolean> activeTimeouts = new HashMap<>();
+
+    private boolean isResponseReceived() {
+        return this.isResponseReceived;
+    } //maybe not needed
 
     private void sendRequest() {
-        this.responded = false;
-    }
+        this.isResponseReceived = false;
+    } //maybe not needed
 
-    private void receivedResponse() {
-        this.responded = true;
-    }
+    private void receiveResponse() {
+        this.isResponseReceived = true;
+    } //maybe not needed
 
     public void addDelayInSeconds(int seconds) {
         try {
             log.info("[CLIENT " + id + "] Adding delay of " + seconds + " seconds");
             Thread.sleep(seconds * 1000);
         } catch (InterruptedException e) {
-            log.info("[CLIENT " + id + "] Error while adding delay");
+            log.error("[CLIENT " + id + "] Error while adding delay");
             e.printStackTrace();
         }
     }
@@ -205,10 +203,15 @@ public class Client extends AbstractActor {
                 log.info("[CLIENT " + id + "] Operation" + lastOp.getOperation() + " finished");
             }
             String operation = lastOp.getOperation();
+            //int delayInSeconds = rnd.nextInt(5);
+            int delayInSeconds = 15;
             switch(operation){
                 case "read":
-                    sendReadRequestMsg(lastOp.getKey());
+                    sendReadRequestMsg(lastOp.getKey(), delayInSeconds);
+                    log.info("[CLIENT " + id + "] Retrying read operation with key " + lastOp.getKey() + " with delay of " + delayInSeconds + " seconds");
                     break;
+
+
                 //TODO: add other operations
                 default:
                     log.info("[CLIENT " + id + "] Operation not recognized");
@@ -217,53 +220,53 @@ public class Client extends AbstractActor {
         }
     }
 
-
     /*-- Actor logic -- */
 
     public void preStart() {
-        CustomPrint.print(classString,"", String.valueOf(this.id), " Started!");
+        //CustomPrint.print(classString,"", String.valueOf(this.id), " Started!");
+        log.info("[CLIENT " + id + "] Started!");
     }
 
     // ----------SEND LOGIC----------
     public void sendInitMsg(){
-        Message.InitMsg msg = new Message.InitMsg(getSelf(), "client");
+        InitMsg msg = new InitMsg(getSelf(), "client");
         parent.tell(msg, getSelf());
     }
 
-    public void sendReadRequestMsg(int key){
-        //log parent
-        log.info("[CLIENT " + id + "] Sending (after delay) read request msg to " + getParent());
-        addDelayInSeconds(20);
+    public void sendReadRequestMsg(int key, int delayInSeconds){
+
+        log.info("[CLIENT " + id + "] Creating read request msg, to be sent to " + getParent().path().name() + " with key " + key);
+
+        addDelayInSeconds(delayInSeconds);
+
         Stack<ActorRef> path = new Stack<>();
         path.push(getSelf());
-        Message.ReadRequestMsg msg = new Message.ReadRequestMsg(key, path);
+        long requestId = System.currentTimeMillis(); //To be modified
+        ReadRequestMsg msg = new ReadRequestMsg(key, path, requestId);
+        log.info("[CLIENT " + id + "] Created read request msg to be sent to " + getParent().path().name() + " with key " + key + " and requestId " + msg.getRequestId());
 
-        //if last operation is finished or there are no operations, add new operation
-        if (operations.size() > 0 && operations.get(operations.size() - 1).isFinished()) {
-            operations.add(new ClientOperation("read", key));
-            log.info("[CLIENT " + id + "] Created new read operation");
-        } else if (operations.size() == 0) {
+        //assumption: client can send only 1 request at a time
+        //if last operation of the client is finished or there are no operations, add new operation
+        if ((operations.size() > 0 && operations.get(operations.size() - 1).isFinished()) || operations.size() == 0) {
             operations.add(new ClientOperation("read", key));
             log.info("[CLIENT " + id + "] Created new read operation");
         }
 
-        //msg.printPath();
         getParent().tell(msg, getSelf());
-        //CustomPrint.print(classString,"", String.valueOf(this.id), " Sent read request msg! to " + getParent());
-        sendRequest();
-        log.info("[CLIENT " + id + "] Sent read request msg! to " + getParent());
-        startTimeout("read");
-        log.info("[CLIENT " + id + "] Started read timeout");
+        //sendRequest(); //maybe not needed
+        log.info("[CLIENT " + id + "] Sent read request msg! to " + getParent().path().name());
+
+        startTimeout("read", getParent().path().name());
     }
 
     public void onReadResponseMsg(Message.ReadResponseMsg msg){
-        receivedResponse();
-        //CustomPrint.print(classString,"", String.valueOf(this.id), " Received read response from " + getSender() + " with value " + msg.getValue() + " for key " + msg.getKey());
-        log.info("[CLIENT " + id + "] Received read response from " + getSender() + " with value " + msg.getValue() + " for key " + msg.getKey());
+        //receiveResponse(); //maybe not needed
+        log.info("[CLIENT " + id + "] Received read response from " + getSender().path().name() + " with value " + msg.getValue() + " for key " + msg.getKey());
         operations.get(operations.size() - 1).setValue(msg.getValue());
         operations.get(operations.size() - 1).setFinished(true);
-        operations.get(operations.size() - 1).setSuccess(true);
+        operations.get(operations.size() - 1).setEndTime();
         log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
+        log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
     }
 
     public void sendWriteMsg(int key, int value){
@@ -305,42 +308,82 @@ public class Client extends AbstractActor {
     }
 
     private void onTimeoutMsg(TimeoutMsg msg) {
-        if (!hasResponded()) {
-            log.info("[CLIENT " + id + "] Received timeout msg from {}!", getSender().path().name());
-            receivedResponse();
-            log.info("[CLIENT " + id + "] Connecting to another L2 cache");
-            Set<ActorRef> caches = getL2_caches();
-            ActorRef[] tmpArray = caches.toArray(new ActorRef[caches.size()]);
-            ActorRef cache = null;
-            //possible improvement: treat the set as a circular array
-            while(cache == this.parent || cache == null) {
-                // generate a random number
-                Random rnd = new Random();
 
-                // this will generate a random number between 0 and
-                // HashSet.size - 1
-                int rndNumber = rnd.nextInt(caches.size());
-                cache = tmpArray[rndNumber];
+        log.info("[CLIENT " + id + "] Received timeout msg of type " + msg.getType() + " with destination " + msg.getConnectionDestination());
+
+        //check timeout msg type
+        if(msg.getType() == "read" || msg.getType() == "write") {
+            //check if operation is finished in the meantime
+            if (operations.size() > 0 && operations.get(operations.size() - 1).isFinished()) {
+                log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " already finished");
+                log.info("[CLIENT " + id + "] Ignoring timeout msg");
+                return;
             }
-            setParent(cache);
-            log.info("[CLIENT " + id + "] New designated parent: " + getParent().path().name());
-            getParent().tell(new RequestConnectionMsg(), getSelf());
-            log.info("[CLIENT " + id + "] Sent request connection msg to " + getParent().path().name());
-            startTimeout("connection");
-            log.info("[CLIENT " + id + "] Started connection timeout");
         }
+
+        if(msg.getType() == "connection") {
+            //check if client is connected to parent in the meantime
+            if(isConnectedToParent){
+                log.info("[CLIENT " + id + "] Ignoring timeout msg");
+                return;
+            }
+        }
+
+
+        //the following is true for every timeout msg type: read, write, connection
+
+        this.isConnectedToParent = false;
+
+        log.info("[CLIENT " + id + "] Trying to connect to another L2 cache");
+        Set<ActorRef> caches = getL2_caches();
+        ActorRef[] tmpArray = caches.toArray(new ActorRef[caches.size()]);
+        ActorRef cache = null;
+
+        //possible improvement: treat the set as a circular array
+        while(cache == this.parent || cache == null) {
+            // generate a random number
+            Random rnd = new Random();
+
+            // this will generate a random number between 0 and Set.size - 1
+            int rndNumber = rnd.nextInt(caches.size());
+            cache = tmpArray[rndNumber];
+        }
+
+        setParent(cache);
+        log.info("[CLIENT " + id + "] New designated parent: " + getParent().path().name());
+
+        getParent().tell(new RequestConnectionMsg(), getSelf());
+        log.info("[CLIENT " + id + "] Sent request connection msg to " + getParent().path().name());
+
+        startTimeout("connection", getParent().path().name());
+        log.info("[CLIENT " + id + "] Started connection timeout");
+
     }
 
+    //not used for now
     private void onTimeoutElapsedMsg (TimeoutElapsedMsg msg){
-        log.info("[CLIENT " + id + "] Received timeout msg from {}!", getSender().path().name());
-        receivedResponse();
+        receiveResponse();
+        log.info("[CLIENT " + id + "] Received timeout elapsed msg from {}!", getSender().path().name());
+        log.info("[CLIENT " + id + "] Waiting for response from " + getParent().path().name());
     }
 
     public void onResponseConnectionMsg(ResponseConnectionMsg msg){
+        //receiveResponse();
         log.info("[CLIENT " + id + "] Received response connection msg from " + getSender().path().name());
-        receivedResponse();
+
         if(msg.getResponse().equals("ACCEPTED")){
             log.info("[CLIENT " + id + "] Connection established with " + getSender().path().name());
+            this.isConnectedToParent = true;
+
+            /*
+            //stop connection timeout
+            if(activeTimeouts.get("connection") == true){
+                activeTimeouts.put("connection", false);
+                log.info("[CLIENT " + id + "] Stopped connection timeout");
+            }
+             */
+
+            //retrying last operation
             retryOperation();
             log.info("[CLIENT " + id + "] Retrying operation");
         }
@@ -348,8 +391,10 @@ public class Client extends AbstractActor {
     }
 
     public void onStartReadRequestMsg(Message.StartReadRequestMsg msg) {
-        CustomPrint.print(classString,"", String.valueOf(this.id), " Received start read request msg!");
-        sendReadRequestMsg(msg.key);
+        //CustomPrint.print(classString,"", String.valueOf(this.id), " Received start read request msg!");
+        log.info("[CLIENT " + id + "] Received start read request msg!");
+        int delayInSeconds = 20;
+        sendReadRequestMsg(msg.key, delayInSeconds );
     }
 
     // ----------WRITE MESSAGES LOGIC----------

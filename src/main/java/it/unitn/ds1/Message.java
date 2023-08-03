@@ -1,5 +1,6 @@
 package it.unitn.ds1;
 
+import akka.actor.Actor;
 import akka.actor.ActorRef;
 
 import java.io.Serializable;
@@ -24,8 +25,39 @@ public class Message {
     }
 
     public static class TimeoutMsg implements Serializable{
-        public TimeoutMsg() {
+
+        private final String type;
+        private final long requestId;
+
+        // variable to store the string of the name of the actor on the other side of the connection
+        private final String connectionDestination;
+
+        //for clients
+        public TimeoutMsg(String type, String connectionDestination){
+            this.type = type; //can be "read","write","connection"
+            this.requestId = -1; //not used
+            this.connectionDestination = connectionDestination;
         }
+
+        //for caches
+        public TimeoutMsg(String type, long requestId, String connectionDestination){
+            this.type = type;
+            this.requestId = requestId;
+            this.connectionDestination = connectionDestination;
+        }
+
+        public String getType(){
+            return this.type;
+        }
+
+        public long getRequestId(){
+            return this.requestId;
+        }
+
+        public String getConnectionDestination() {
+        	return this.connectionDestination;
+        }
+
     }
 
     public static class InfoMsg implements Serializable{
@@ -191,14 +223,18 @@ public class Message {
     public static class ReadRequestMsg implements Serializable {
         private final int key;
         private final Stack<ActorRef> path;
+        private final long requestId;
 
-        public ReadRequestMsg(int key, Stack<ActorRef> path) {
+        public ReadRequestMsg(int key, Stack<ActorRef> path, long requestId) {
             this.key = key;
-
             //path should be unmodifiable, to follow the general akka rule
             this.path = new Stack<>();
             this.path.addAll(path);
+            this.requestId = requestId;
+        }
 
+        public long getRequestId() {
+            return requestId;
         }
 
         public int getKey() {
@@ -236,13 +272,15 @@ public class Message {
         private final int key;
         private final int value;
         private final Stack<ActorRef> path;
+        private final long requestId;
 
-        public ReadResponseMsg(int key, int value, List<ActorRef> path) {
+        public ReadResponseMsg(int key, int value, List<ActorRef> path, long requestId) {
             this.key = key;
             this.value = value;
             //path should be unmodifiable, to follow the general akka rule
             this.path = new Stack<>();
             this.path.addAll(path);
+            this.requestId = requestId;
         }
 
         public int getKey() {
@@ -251,6 +289,10 @@ public class Message {
 
         public int getValue() {
             return value;
+        }
+
+        public long getRequestId() {
+            return requestId;
         }
 
         public Stack<ActorRef> getPath() {

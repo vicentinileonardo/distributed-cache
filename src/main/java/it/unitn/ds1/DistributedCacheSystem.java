@@ -280,7 +280,7 @@ public class DistributedCacheSystem {
         client.tell(msg, ActorRef.noSender());
     }
 
-    public static void main(String[] args) throws IOException, InterruptedException {
+    public static void main(String[] args) throws IOException {
 
         DistributedCacheSystem distributedCacheSystem = new DistributedCacheSystem("config.yaml");
         String configFilePath = System.getProperty("user.dir") + distributedCacheSystem.config_file;
@@ -310,8 +310,8 @@ public class DistributedCacheSystem {
 
 
         distributedCacheSystem.sendReadMsgs();
-        sleep(150000);
-        distributedCacheSystem.sendReadMsgs();
+        //sleep(150000);
+        //distributedCacheSystem.sendReadMsgs();
         //distributedCacheSystem.sendWriteMsgs();
         //sleep(2000);
 
