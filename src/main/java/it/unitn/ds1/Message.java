@@ -1,6 +1,5 @@
 package it.unitn.ds1;
 
-import akka.actor.Actor;
 import akka.actor.ActorRef;
 
 import java.io.Serializable;
@@ -328,15 +327,48 @@ public class Message {
 
 
     // ----------WRITE MESSAGES----------
-    public static class WriteConfirmationMsg implements Serializable {
-        public final int key;
-        public final int value;
+    public static class WriteResponseMsg implements Serializable {
+        private final int key;
+        private final int value;
         public Stack<ActorRef> path;
+        private final long requestId;
 
-        public WriteConfirmationMsg(int key, int value, Stack<ActorRef> path) {
+        public WriteResponseMsg(int key, int value, Stack<ActorRef> path, long requestId) {
             this.key = key;
             this.value = value;
             this.path = path;
+            this.requestId = requestId;
+        }
+
+        public int getKey() {
+            return key;
+        }
+
+        public int getValue() {
+            return value;
+        }
+
+        public long getRequestId() {
+            return requestId;
+        }
+
+        public Stack<ActorRef> getPath() {
+            return path;
+        }
+
+        public int getPathSize() {
+            return path.size();
+        }
+
+        // Print the path
+        public String printPath() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Current path of message: [ ");
+            for (ActorRef actor : path) {
+                sb.append(actor.path().name()).append(" ");
+            }
+            sb.append(" ]");
+            return sb.toString();
         }
     }
 
@@ -348,7 +380,7 @@ public class Message {
         }
     }
 
-    public static class StartWriteMsg implements Serializable{
+    public static class StartWriteMsg implements Serializable{ //TODO: change into private with getters
         public final int key;
         public final int value;
 
@@ -358,27 +390,81 @@ public class Message {
         }
     }
 
-    public static class WriteMsg implements Serializable{
+    public static class WriteRequestMsg implements Serializable{
         public final int key;
         public final int value;
         public Stack<ActorRef> path;
+        private final long requestId;
 
-        public WriteMsg(int key, int value, Stack<ActorRef> path) {
+        public WriteRequestMsg(int key, int value, Stack<ActorRef> path, long requestId) {
             this.key = key;
             this.value = value;
-            this.path = path;
-        }
+            //path should be unmodifiable, to follow the general akka rule
+            this.path = new Stack<>();
+            this.path.addAll(path);
+            this.requestId = requestId;
         }
 
+        public long getRequestId() {
+            return requestId;
+        }
 
-    public static class FillMsg implements Serializable{
+        public int getKey() {
+            return key;
+        }
+
+        public int getValue() {
+            return value;
+        }
+
+        public Stack<ActorRef> getPath() {
+            return path;
+        }
+
+        //get last element of the path
+        public ActorRef getLast() {
+            return path.peek();
+        }
+
+        //get path size
+        public int getPathSize() {
+            return path.size();
+        }
+
+        // Print the path
+        public String printPath() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Current path of message: [ ");
+            for (ActorRef actor : path) {
+                sb.append(actor.path().name()).append(" ");
+            }
+            sb.append(" ]");
+            return sb.toString();
+        }
+    }
+
+
+    public static class FillMsg implements Serializable{ //TODO: private variables
         public final int key;
         public final int value;
+
         public FillMsg(int key, int value) {
             this.key = key;
             this.value = value;
         }
+
+        public int getKey() {
+            return key;
+        }
+
+        public int getValue() {
+            return value;
+        }
     }
+
+    public static class InfoItemsMsg implements Serializable {}
+
+
 
 
 

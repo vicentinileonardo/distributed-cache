@@ -10,7 +10,7 @@ clients:
     - type: !!str crit_read
       value: !!int 10
     - type: !!str write
-      value: !!int 10
+      value: !!int 100
     - type: !!str crit_write
       value: !!int 10
     - type: !!str connection
@@ -29,7 +29,7 @@ l2Caches:
       value: !!int 10
 l1Caches:
   maxNum: !!int 10
-  customNum: !!int 5
+  customNum: !!int 3
   timeouts:
     - type: !!str read
       value: !!int 10

@@ -212,6 +212,84 @@ public class HTTPRoutes extends AllDirectives {
         );
     }
 
+    public Route stateL1caches(DistributedCacheSystem system) {
+        return path(segment("l1caches").slash(segment()).slash("state"), (String id) ->
+                get(() -> {
+                    CustomPrint.print(classString, "", "", "Trying to print STATE of L1 cache: " + id );
+
+                    HashSet<ActorRef> l1Caches = system.getL1Caches();
+                    //find the l1 cache with the given id
+                    ActorRef l1Cache = null;
+                    for (ActorRef l1 : l1Caches) {
+                        if (l1.path().name().equals(id)) {
+                            l1Cache = l1;
+                            break;
+                        }
+                    }
+                    if (l1Cache == null) {
+                        ObjectNode message = JsonNodeFactory.instance.objectNode();
+                        String value = "L1 cache: " + id + " not found";
+                        CustomPrint.print(classString, "", "", value);
+                        message.put("message", value);
+                        return completeOK(message, Jackson.marshaller());
+                    }
+                    l1Cache.tell(new InfoItemsMsg(), ActorRef.noSender());
+                    ObjectNode message = JsonNodeFactory.instance.objectNode();
+                    String value = "InfoItems message sent to L1 cache: " + id;
+                    CustomPrint.print(classString, "", "", value);
+                    message.put("message", value);
+                    return completeOK(message, Jackson.marshaller());
+                })
+        );
+    }
+
+    public Route stateL2caches(DistributedCacheSystem system) {
+        return path(segment("l2caches").slash(segment()).slash("state"), (String id) ->
+                get(() -> {
+                    CustomPrint.print(classString, "", "", "Trying to print STATE of L2 cache: " + id );
+
+                    HashSet<ActorRef> l2Caches = system.getL2Caches();
+                    //find the l2 cache with the given id
+                    ActorRef l2Cache = null;
+                    for (ActorRef l2 : l2Caches) {
+                        if (l2.path().name().equals(id)) {
+                            l2Cache = l2;
+                            break;
+                        }
+                    }
+                    if (l2Cache == null) {
+                        ObjectNode message = JsonNodeFactory.instance.objectNode();
+                        String value = "L2 cache: " + id + " not found";
+                        CustomPrint.print(classString, "", "", value);
+                        message.put("message", value);
+                        return completeOK(message, Jackson.marshaller());
+                    }
+                    l2Cache.tell(new InfoItemsMsg(), ActorRef.noSender());
+                    ObjectNode message = JsonNodeFactory.instance.objectNode();
+                    String value = "InfoItems message sent to L2 cache: " + id;
+                    CustomPrint.print(classString, "", "", value);
+                    message.put("message", value);
+                    return completeOK(message, Jackson.marshaller());
+                })
+        );
+    }
+
+    public Route stateDB(DistributedCacheSystem system) {
+        return path(segment("db").slash("state"), () ->
+                get(() -> {
+                    CustomPrint.print(classString, "", "", "Trying to print STATE of DB");
+
+                    system.getDatabase().tell(new CurrentDataMsg(), ActorRef.noSender());
+
+                    ObjectNode message = JsonNodeFactory.instance.objectNode();
+                    String value = "CurrentData message sent to DB";
+                    CustomPrint.print(classString, "", "", value);
+                    message.put("message", value);
+                    return completeOK(message, Jackson.marshaller());
+                })
+        );
+    }
+
 
 }
 

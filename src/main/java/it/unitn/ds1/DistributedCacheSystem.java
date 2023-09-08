@@ -34,6 +34,11 @@ public class DistributedCacheSystem {
         this.config_file = config_file;
     }
 
+    //getter for database actor
+    public ActorRef getDatabase() {
+        return databaseActor;
+    }
+
     //getter for l2 cache actors
     public HashSet<ActorRef> getL2Caches() {
         return l2CacheActors;
@@ -251,21 +256,6 @@ public class DistributedCacheSystem {
         System.out.println("L1 caches initialized");
     }
 
-
-    private void sendWriteMsgs() {
-        ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
-
-        // generate a random number
-        Random rndm = new Random();
-
-        // this will generate a random number between 0 and
-        // HashSet.size - 1
-        int rndmNumber = rndm.nextInt(this.clientActors.size());
-        ActorRef client = tmpArray[rndmNumber];
-        Message.StartWriteMsg msg = new Message.StartWriteMsg(0, 10);
-        client.tell(msg, ActorRef.noSender());
-    }
-
     private void sendReadMsgs() {
         ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
 
@@ -276,11 +266,35 @@ public class DistributedCacheSystem {
         // HashSet.size - 1
         int rndmNumber = rndm.nextInt(this.clientActors.size());
         ActorRef client = tmpArray[rndmNumber];
-        Message.StartReadRequestMsg msg = new Message.StartReadRequestMsg(0);
+        //ActorRef client = tmpArray[0];
+        int rndmKey = rndm.nextInt(10);
+        int specificKey = 4;
+        Message.StartReadRequestMsg msg = new Message.StartReadRequestMsg(specificKey);
         client.tell(msg, ActorRef.noSender());
     }
 
-    public static void main(String[] args) throws IOException {
+    private void sendWriteMsgs() {
+        ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
+
+        // generate a random number
+        Random rndm = new Random();
+
+        // this will generate a random number between 0 and
+        // HashSet.size - 1
+        int rndmNumber = rndm.nextInt(this.clientActors.size());
+
+        ActorRef client = tmpArray[rndmNumber];
+        //ActorRef client = tmpArray[0];
+
+        int rndmKey = rndm.nextInt(10);
+        int rndmValue = rndm.nextInt(100);
+        //StartWriteMsg msg = new StartWriteMsg(rndmKey, rndmValue);
+        StartWriteMsg msg = new StartWriteMsg(4, rndmValue);
+        client.tell(msg, ActorRef.noSender());
+    }
+
+
+    public static void main(String[] args) throws IOException, InterruptedException {
 
         DistributedCacheSystem distributedCacheSystem = new DistributedCacheSystem("config.yaml");
         String configFilePath = System.getProperty("user.dir") + distributedCacheSystem.config_file;
@@ -297,12 +311,24 @@ public class DistributedCacheSystem {
         Route getClients = new HTTPRoutes().getClients(distributedCacheSystem);
         Route getL1Caches = new HTTPRoutes().getL1Caches(distributedCacheSystem);
         Route getL2Caches = new HTTPRoutes().getL2Caches(distributedCacheSystem);
-        Route crashL2Caches = new HTTPRoutes().crashL2caches(distributedCacheSystem);
         Route crashL1Caches = new HTTPRoutes().crashL1caches(distributedCacheSystem);
-        Route recoverL2Caches = new HTTPRoutes().recoverL2caches(distributedCacheSystem);
+        Route crashL2Caches = new HTTPRoutes().crashL2caches(distributedCacheSystem);
         Route recoverL1Caches = new HTTPRoutes().recoverL1caches(distributedCacheSystem);
+        Route recoverL2Caches = new HTTPRoutes().recoverL2caches(distributedCacheSystem);
+        Route stateL1caches = new HTTPRoutes().stateL1caches(distributedCacheSystem);
+        Route stateL2caches = new HTTPRoutes().stateL2caches(distributedCacheSystem);
+        Route stateDB = new HTTPRoutes().stateDB(distributedCacheSystem);
 
-        Route concat = concat(getClients, getL1Caches, getL2Caches, crashL2Caches, crashL1Caches, recoverL2Caches, recoverL1Caches);
+        Route concat = concat(getClients,
+                getL1Caches,
+                getL2Caches,
+                crashL1Caches,
+                crashL2Caches,
+                recoverL1Caches,
+                recoverL2Caches,
+                stateL1caches,
+                stateL2caches,
+                stateDB);
 
         Http.get(distributedCacheSystem.system)
                 .newServerAt("localhost", 3003)
@@ -310,10 +336,31 @@ public class DistributedCacheSystem {
 
 
         distributedCacheSystem.sendReadMsgs();
-        //sleep(150000);
-        //distributedCacheSystem.sendReadMsgs();
-        //distributedCacheSystem.sendWriteMsgs();
-        //sleep(2000);
+        sleep(3000);
+        distributedCacheSystem.sendReadMsgs();
+        sleep(3000);
+        distributedCacheSystem.sendReadMsgs();
+        sleep(3000);
+        distributedCacheSystem.sendReadMsgs();
+        sleep(3000);
+        distributedCacheSystem.sendReadMsgs();
+        sleep(3000);
+        distributedCacheSystem.sendReadMsgs();
+        sleep(3000);
+        distributedCacheSystem.sendReadMsgs();
+        sleep(3000);
+        distributedCacheSystem.sendWriteMsgs();
+        sleep(3000);
+        distributedCacheSystem.sendWriteMsgs();
+        sleep(3000);
+        distributedCacheSystem.sendWriteMsgs();
+        sleep(3000);
+        distributedCacheSystem.sendWriteMsgs();
+        sleep(3000);
+        distributedCacheSystem.sendReadMsgs();
+        sleep(3000);
+        distributedCacheSystem.sendReadMsgs();
+
 
 
         //client read msg

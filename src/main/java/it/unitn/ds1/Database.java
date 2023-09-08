@@ -137,47 +137,22 @@ public class Database extends AbstractActor {
         return data.get(key);
     }
 
-    public void onReadRequestMsg(Message.ReadRequestMsg readRequestMsg){
-        //CustomPrint.debugPrint(classString, "Database " + id + " received a read request for key " + readRequestMsg.getKey() + " from cache " + getSender().path().name());
-        log.info("[DATABASE " + id + "] Received a read request for key " + readRequestMsg.getKey() + " from cache " + getSender().path().name());
-
-        if (isDataPresent(readRequestMsg.getKey())){
-
-            log.info("[DATABASE " + id + "] Data for key " + readRequestMsg.getKey() + " is present in database");
-
-            //send response to child (l1 cache) (or l2 cache, if crashes are considered)
-            ActorRef child = readRequestMsg.getLast();
-
-            int value = getData(readRequestMsg.getKey());
-
-            ReadResponseMsg readResponseMsg = new ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath(), readRequestMsg.getRequestId());
-            child.tell(readResponseMsg, getSelf());
-            //CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey() + " and sent it to cache " + child.path().name());
-            log.info("[DATABASE " + id + "] Read value " + value + " for key " + readRequestMsg.getKey() + " and sent it to cache " + child.path().name());
-
-        } else { // data not present, to be decided if the scenario is possible
-            //as a matter of fact the client should pick key value that are stored maybe in a config file, to be sure the key is present at least in the database
-            //for now, the database will send a response to the client with a value of -1
-            ActorRef child = readRequestMsg.getLast();
-            int value = -1;
-
-            ReadResponseMsg readResponseMsg = new ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath(), readRequestMsg.getRequestId());
-            child.tell(readResponseMsg, getSelf());
-            //CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey());
-            log.info("[DATABASE " + id + "] Read value " + value + " for key " + readRequestMsg.getKey());
-
-        }
-    }
-
     // ----------SENDING LOGIC----------
 
-    private void sendWriteConfirmation(WriteMsg msg, Set<ActorRef> caches) {
+    private void sendWriteResponses(WriteRequestMsg writeRequestMsg, Set<ActorRef> caches) {
         for (ActorRef cache : caches) {
+            // if the cache is not the sender, send a fill message
             if (!cache.equals(getSender())){
-                cache.tell(new FillMsg(msg.key, msg.value), ActorRef.noSender());
-            } else {
-                msg.path.pop();
-                cache.tell(new WriteConfirmationMsg(msg.key, msg.value, msg.path), ActorRef.noSender());
+                log.info("[DATABASE " + id + "] Sending a fill message to cache " + cache.path().name());
+                cache.tell(new FillMsg(writeRequestMsg.getKey(), writeRequestMsg.getValue()), getSelf());
+                log.info("[DATABASE " + id + "] Sent a fill message to cache " + cache.path().name());
+            } else { // if the cache is the sender, send a write response message
+                log.info("[DATABASE " + id + "] Sending a write response message to cache " + cache.path().name());
+                Stack<ActorRef> newPath = new Stack<>();
+                newPath.addAll(writeRequestMsg.getPath());
+                newPath.pop();
+                cache.tell(new WriteResponseMsg(writeRequestMsg.getKey(), writeRequestMsg.getValue(), newPath, writeRequestMsg.getRequestId()), getSelf());
+                log.info("[DATABASE " + id + "] Sent a write response message to cache " + cache.path().name());
             }
         }
     }
@@ -191,7 +166,7 @@ public class Database extends AbstractActor {
                 .match(CurrentDataMsg.class, this::onCurrentDataMsg)
                 .match(DropDatabaseMsg.class, this::onDropDatabaseMsg)
                 .match(ReadRequestMsg.class, this::onReadRequestMsg)
-                .match(WriteMsg.class, this::onWriteMsg)
+                .match(WriteRequestMsg.class, this::onWriteRequestMsg)
                 .matchAny(o -> System.out.println("Database received unknown message from " + getSender()))
                 .build();
     }
@@ -213,20 +188,54 @@ public class Database extends AbstractActor {
 
     // ----------READ MESSAGES LOGIC----------
 
+    public void onReadRequestMsg(Message.ReadRequestMsg readRequestMsg){
+        //CustomPrint.debugPrint(classString, "Database " + id + " received a read request for key " + readRequestMsg.getKey() + " from cache " + getSender().path().name());
+        log.info("[DATABASE " + id + "] Received a read request for key " + readRequestMsg.getKey() + " from cache " + getSender().path().name());
+
+        if (isDataPresent(readRequestMsg.getKey())){
+
+            log.info("[DATABASE " + id + "] Data for key " + readRequestMsg.getKey() + " is present in database");
+
+            //send response to child (l1 cache) (or l2 cache, if crashes are considered)
+            ActorRef child = readRequestMsg.getLast();
+
+            int value = getData(readRequestMsg.getKey());
+
+            ReadResponseMsg readResponseMsg = new ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath(), readRequestMsg.getRequestId());
+            child.tell(readResponseMsg, getSelf());
+            //CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey() + " and sent it to cache " + child.path().name());
+            log.info("[DATABASE " + id + "] Read value " + value + " for key " + readRequestMsg.getKey() + " and sent it to cache " + child.path().name());
+
+        } else { // data not present, the scenario should not be possible
+            //as a matter of fact the client should pick key value that are stored maybe in a config file, to be sure the key is present at least in the database
+            //for now, the database will send a response to the client with a value of -1
+            ActorRef child = readRequestMsg.getLast();
+            int value = -1;
+
+            ReadResponseMsg readResponseMsg = new ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath(), readRequestMsg.getRequestId());
+            child.tell(readResponseMsg, getSelf());
+            //CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey());
+            log.info("[DATABASE " + id + "] Read value " + value + " for key " + readRequestMsg.getKey());
+
+        }
+    }
+
 
     // ----------WRITE MESSAGES LOGIC----------
-    public void onWriteMsg(WriteMsg msg) {
-        CustomPrint.debugPrint(classString, "Database " + id + " received a write request for key " + msg.key + " with value " + msg.value);
+    public void onWriteRequestMsg(WriteRequestMsg msg) {
+        log.info("[DATABASE " + id + "] Received a write request for key " + msg.key + " with value " + msg.value);
 
-        data.put(msg.key, msg.value);
-        CustomPrint.debugPrint(classString, "Database " + id + " wrote key " + msg.key + " with value " + msg.value);
+        data.put(msg.getKey(), msg.getValue());
+        log.info("[DATABASE " + id + "] Wrote key " + msg.key + " with value " + msg.value);
 
         // notify all L1 caches
-        sendWriteConfirmation(msg, L1_caches);
+        sendWriteResponses(msg, L1_caches);
+        log.info("[DATABASE " + id + "] Sending write responses to L1 caches");
 
-        // notify all L2 caches that are connected directly with the db
+        // notify all L2 caches that are connected directly with the db (due to previous crashes)
         if (!L2_caches.isEmpty()) {
-            sendWriteConfirmation(msg, L2_caches);
+            sendWriteResponses(msg, L2_caches);
+            log.info("[DATABASE " + id + "] Sending write responses ALSO to L2 caches");
         }
 
     }
