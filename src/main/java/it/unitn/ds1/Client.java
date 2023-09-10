@@ -31,7 +31,7 @@ public class Client extends AbstractActor {
     private Random rnd = new Random();
     private String classString = String.valueOf(getClass());
 
-    // operations done by the client
+    // operations done by the client: read, write, crit_read, crit_write
     public class ClientOperation {
         private final String operation;
         private final int key;
@@ -242,6 +242,7 @@ public class Client extends AbstractActor {
         log.info("[CLIENT " + id + "] Started creating read request msg, to be sent to " + getParent().path().name() + " with key " + key);
 
         addDelayInSeconds(delayInSeconds);
+        log.info("[CLIENT " + id + "] Delay of " + delayInSeconds + " seconds added");
 
         Stack<ActorRef> path = new Stack<>();
         path.push(getSelf());
@@ -403,6 +404,9 @@ public class Client extends AbstractActor {
     }
 
     public void onResponseConnectionMsg(ResponseConnectionMsg msg){
+
+        // this is the case when a L2 cache crashes and the client tries to connect to another L2 cache
+
         //receiveResponse();
         log.info("[CLIENT " + id + "] Received response connection msg from " + getSender().path().name());
 
@@ -428,8 +432,8 @@ public class Client extends AbstractActor {
     public void onStartReadRequestMsg(Message.StartReadRequestMsg msg) {
         //CustomPrint.print(classString,"", String.valueOf(this.id), " Received start read request msg!");
         log.info("[CLIENT " + id + "] Received start read request msg!");
-        int delayInSeconds = 1;
-        sendReadRequestMsg(msg.key, delayInSeconds );
+        int delayInSeconds = 60;
+        sendReadRequestMsg(msg.key, delayInSeconds);
     }
 
     // ----------WRITE MESSAGES LOGIC----------
@@ -448,7 +452,7 @@ public class Client extends AbstractActor {
         operations.get(operations.size() - 1).setEndTime();
         log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
         log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
-        // when interacting with the same cache
+        // when interacting with the same cache (l2 cache)
         // the client is guaranteed not to read a value older than the last write
     }
 }

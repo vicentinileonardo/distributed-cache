@@ -167,6 +167,7 @@ public class Database extends AbstractActor {
                 .match(DropDatabaseMsg.class, this::onDropDatabaseMsg)
                 .match(ReadRequestMsg.class, this::onReadRequestMsg)
                 .match(WriteRequestMsg.class, this::onWriteRequestMsg)
+                .match(RequestConnectionMsg.class, this::onRequestConnectionMsg)
                 .matchAny(o -> System.out.println("Database received unknown message from " + getSender()))
                 .build();
     }
@@ -184,6 +185,25 @@ public class Database extends AbstractActor {
         }
         addL1_cache(msg.id);
         log.info("[DATABASE " + id + "] Added " + getSender().path().name() + " as a child");
+    }
+
+    private void onRequestConnectionMsg(RequestConnectionMsg msg) {
+        if (!msg.getType().isEmpty()){
+            if (msg.getType().equals("L2")){
+                addL2_cache(getSender());
+                log.info("[DATABASE " + id + "] Added " + getSender().path().name() + " as a child");
+                getSender().tell(new ResponseConnectionMsg("ACCEPTED"), getSelf());
+                log.info("[DATABASE " + id + "] Sent a response connection message to " + getSender().path().name());
+            } else if (msg.getType().equals("L1")){
+                addL1_cache(getSender());
+                log.info("[DATABASE " + id + "] Added " + getSender().path().name() + " as a child");
+                getSender().tell(new ResponseConnectionMsg("ACCEPTED"), getSelf());
+                log.info("[DATABASE " + id + "] Sent a response connection message to " + getSender().path().name());
+            } else
+                log.info("[DATABASE " + id + "] Received a request connection message from " + getSender().path().name() + " with invalid type");
+        } else {
+            log.info("[DATABASE " + id + "] Received a request connection message from " + getSender().path().name() + " with empty type");
+        }
     }
 
     // ----------READ MESSAGES LOGIC----------

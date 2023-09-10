@@ -53,6 +53,26 @@ public class Cache extends AbstractActor{
             return requestId;
         }
 
+        int getKey() {
+            return key;
+        }
+
+        int getValue() {
+            return value;
+        }
+
+        String getType() {
+            return type;
+        }
+
+        String getRequesterType() {
+            return requesterType;
+        }
+
+        ActorRef getRequester() {
+            return requester;
+        }
+
         public boolean isFulfilled() {
             return isFulfilled;
         }
@@ -81,7 +101,10 @@ public class Cache extends AbstractActor{
 
     }
 
-    //map of request where the key is the id of the request and the value is the request itself
+    // map of request where the key is the id of the request and the value is the request itself
+    // assumption: a cache can receive requests from different clients at the same time
+    // therefore we cannot use only a binary switch to check if a request is being processed by the cache
+    // we need a map to keep track of all the requests
     private Map<Long, Request> requests = new HashMap<>();
 
     private HashSet<Integer> recoveredKeys = new HashSet<>();
@@ -326,6 +349,38 @@ public class Cache extends AbstractActor{
         }
     }
 
+    public void retryRequests(){
+
+        // this business logic is used only by L2 caches
+
+        System.out.println("inside retryRequests");
+        for (Request request : this.requests.values()) {
+            System.out.println("request: " + request);
+            if (!request.isFulfilled()) {
+                log.info("[{} CACHE {}] Retrying request with id {}", this.type_of_cache.toString(), String.valueOf(this.id), String.valueOf(request.getRequestId()));
+                if (request.getType().equals("read")) {
+
+                    // recreate the path
+                    Stack<ActorRef> path = new Stack<>();
+                    path.push(request.getRequester());
+                    path.push(getSelf());
+
+                    System.out.println("recreated path: " + path);
+
+                    // forward the request to the parent (db)
+                    // note that the db could have already been asked the same request from the crashed L1 cache
+                    // but the response never arrived to the L2 cache (due to the L1 cache crash), so it's ok to ask again
+                    getParent().tell(new ReadRequestMsg(request.getKey(), path, request.getRequestId()), getSelf());
+                    log.info("[{} CACHE {}] Forwarded read request to {}", this.type_of_cache.toString(), String.valueOf(this.id), getParent().path().name());
+
+
+                } else if (request.getType().equals("write")) {
+                    //request.getRequester().tell(new WriteRequestMsg(request.getKey(), request.getValue(), request.getRequestId()), getSelf());
+                }
+            }
+        }
+    }
+
     /*-- Actor logic -- */
 
     public void preStart() {
@@ -372,6 +427,7 @@ public class Cache extends AbstractActor{
                 .match(TimeoutMsg.class, this::onTimeoutMsg)
                 .match(TimeoutElapsedMsg.class, this::onTimeoutElapsedMsg)
                 .match(InfoItemsMsg.class, this::onInfoItemsMsg)
+                .match(ResponseConnectionMsg.class, this::onResponseConnectionMsg)
                 // Catch all other messages
                 .matchAny(o -> log.info("[{} CACHE {}] Received unknown message from {} {}!",
                         getCacheType().toString(), String.valueOf(getID()), getSender().path().name(),
@@ -388,14 +444,16 @@ public class Cache extends AbstractActor{
 
     // ----------TIMEOUT MESSAGE LOGIC----------
 
-    //Use case: L2 cache receives timeout msg from L1 cache, it means that its L1 is crashed, so it connects to the database
-    //assumption: database is always available, so a cache cannot timeout while waiting for a response from the database
-    //(if we consider the worst network delay to be less than read timeout)
+    // Use case: L2 cache receives timeout msg from L1 cache, it means that its L1 is crashed, so it connects to the database
+    // Assumption: database is always available, so a cache cannot timeout while waiting for a response from the database
+    // L1 cache can timeout while waiting for a response from the L2 cache (advanced case)
+    // (if we consider the worst network delay to be less than read timeout)
     private void onTimeoutMsg(TimeoutMsg msg) {
 
         //TODO: add differentiation type and client inside the timeout msg
 
-        //check if requestid in hashmap of requests is already fulfilled
+        // since a cache can receive multiple requests at the same time
+        // check if requestId in hashmap of requests is already fulfilled
         if (this.requests.get(msg.getRequestId()).isFulfilled()) {
             log.info("[{} CACHE {}] Received timeout msg for fulfilled request", getCacheType().toString(), String.valueOf(getID()));
             log.info("[{} CACHE {}] Ignoring timeout msg", getCacheType().toString(), String.valueOf(getID()));
@@ -416,9 +474,22 @@ public class Cache extends AbstractActor{
                     //ActorRef client = msg.getClient();
                     //client.tell(new TimeoutElapsedMsg(), getSelf());
                     //log.info("[{} CACHE {}] Sent timeout elapsed msg to {}", getCacheType().toString(), String.valueOf(getID()), client.path().name());
-
                 }
+                break;
+            case "write":
+                log.info("[{} CACHE {}] Received timeout msg for write request operation", getCacheType().toString(), String.valueOf(getID()));
 
+                // if L2 cache, connect to database
+                if(getCacheType().equals(TYPE.L2)){
+                    log.info("[{} CACHE {}] Connecting to DATABASE", getCacheType().toString(), String.valueOf(getID()));
+                    setParent(getDatabase());
+                    getParent().tell(new RequestConnectionMsg("L2"), getSelf());
+
+                    //tell the client that the L1 cache is not available, so this L2 is connecting to the database, so client should wait more, maybe extend the timeout
+                    //ActorRef client = msg.getClient();
+                    //client.tell(new TimeoutElapsedMsg(), getSelf());
+                    //log.info("[{} CACHE {}] Sent timeout elapsed msg to {}", getCacheType().toString(), String.valueOf(getID()), client.path().name());
+                }
                 break;
 
             default:
@@ -440,7 +511,7 @@ public class Cache extends AbstractActor{
 
     // ----------READ MESSAGES LOGIC----------
 
-    public void onReadRequestMsg(Message.ReadRequestMsg readRequestMsg){
+    public void onReadRequestMsg(ReadRequestMsg readRequestMsg){
 
         //CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Received read request msg from " + getSender());
         log.info("[{} CACHE {}] Received read request msg from {}, asking for key {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name(), readRequestMsg.getKey());
@@ -494,7 +565,9 @@ public class Cache extends AbstractActor{
 
             log.info("[{} CACHE {}] Data is not present in cache; key:{}", getCacheType().toString(), String.valueOf(getID()), readRequestMsg.getKey());
 
-            addDelayInSeconds(1);
+            int delay = 30;
+            addDelayInSeconds(delay);
+            log.info("[{} CACHE {}] Added delay of {} seconds", getCacheType().toString(), String.valueOf(getID()), delay);
 
             //adding cache to path
             Stack<ActorRef> newPath = new Stack<>();
@@ -545,8 +618,8 @@ public class Cache extends AbstractActor{
         }
 
         //test print msg
-        InfoItemsMsg infoItemsMsg = new InfoItemsMsg();
-        getSelf().tell(infoItemsMsg, getSelf());
+        //InfoItemsMsg infoItemsMsg = new InfoItemsMsg();
+        //getSelf().tell(infoItemsMsg, getSelf());
 
         //send response to child
         //either client or l2 cache
@@ -597,6 +670,8 @@ public class Cache extends AbstractActor{
 
     private void onWriteResponseMsg(WriteResponseMsg writeResponseMsg){
 
+        log.info("[{} CACHE {}] Received write response msg; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), writeResponseMsg.getKey(), writeResponseMsg.getValue());
+
         if (data.containsKey(writeResponseMsg.getKey())){
             data.put(writeResponseMsg.getKey(), writeResponseMsg.getValue());
             log.info("[{} CACHE {}] Added data to cache; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), writeResponseMsg.getKey(), writeResponseMsg.getValue());
@@ -611,14 +686,14 @@ public class Cache extends AbstractActor{
             //TODO: send special error message to client or master
         }
 
-
-
         ActorRef destination = writeResponseMsg.getPath().pop();
+
         // to propagate the response to the path of the request
         destination.tell(writeResponseMsg, getSelf());
         log.info("[{} CACHE {}] Sent write response msg to {}", getCacheType().toString(), String.valueOf(getID()), destination.path().name());
 
         // to propagate to children in the subtree of the L1 cache used to write the data
+        // except to the L2 cache that sent the write request, since it received the WriteResponseMsg
         if (type_of_cache == TYPE.L1) {
             for (ActorRef child : getChildren()) {
                 if (!child.equals(destination)) {
@@ -628,6 +703,7 @@ public class Cache extends AbstractActor{
             }
         }
 
+        // set request as fulfilled
         sentWriteResponse(writeResponseMsg.getRequestId());
     }
 
@@ -759,5 +835,33 @@ public class Cache extends AbstractActor{
                     getCacheType(), getID(), entry.getKey(), entry.getValue());
         }
     }
+
+    public void onResponseConnectionMsg(ResponseConnectionMsg msg){
+
+        // this is the case when a L1 cache crashes and so a L2 cache child tries to connect to the database
+        // therefore, this business logic will be executed only by L2 caches
+
+        log.info("[{} CACHE {}] Received response connection msg from {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
+        if(msg.getResponse().equals("ACCEPTED")){
+            log.info("[{} CACHE {}] Connection accepted", getCacheType().toString(), String.valueOf(getID()));
+
+            // since, unlike the clients, caches do not perform only 1 requests at time
+            // we must retry all requests that are not yet completed
+            // for instance, Client 1 sends a request to L2 Cache 1, which forwards it to L1 Cache 1
+            // then, Client 2 sends a request to L2 Cache 1, which forwards it to L1 Cache 1
+            // L1 Cache 1 crashes before completing the requests
+            // L2 Cache 1 experience a timeout and sends a connection request to the database
+            // therefore L2 Cache 1 has two requests to be completed
+            retryRequests();
+        }
+
+
+
+
+
+
+    }
+
+
 
 }

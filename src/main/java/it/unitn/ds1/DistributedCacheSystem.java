@@ -336,30 +336,7 @@ public class DistributedCacheSystem {
 
 
         distributedCacheSystem.sendReadMsgs();
-        sleep(3000);
-        distributedCacheSystem.sendReadMsgs();
-        sleep(3000);
-        distributedCacheSystem.sendReadMsgs();
-        sleep(3000);
-        distributedCacheSystem.sendReadMsgs();
-        sleep(3000);
-        distributedCacheSystem.sendReadMsgs();
-        sleep(3000);
-        distributedCacheSystem.sendReadMsgs();
-        sleep(3000);
-        distributedCacheSystem.sendReadMsgs();
-        sleep(3000);
-        distributedCacheSystem.sendWriteMsgs();
-        sleep(3000);
-        distributedCacheSystem.sendWriteMsgs();
-        sleep(3000);
-        distributedCacheSystem.sendWriteMsgs();
-        sleep(3000);
-        distributedCacheSystem.sendWriteMsgs();
-        sleep(3000);
-        distributedCacheSystem.sendReadMsgs();
-        sleep(3000);
-        distributedCacheSystem.sendReadMsgs();
+
 
 
 
