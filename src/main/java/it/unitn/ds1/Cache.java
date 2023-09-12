@@ -352,30 +352,39 @@ public class Cache extends AbstractActor{
     public void retryRequests(){
 
         // this business logic is used only by L2 caches
+        //TODO: think if we need timeouts also here. db never crash so it could be useless
 
         System.out.println("inside retryRequests");
         for (Request request : this.requests.values()) {
             System.out.println("request: " + request);
             if (!request.isFulfilled()) {
                 log.info("[{} CACHE {}] Retrying request with id {}", this.type_of_cache.toString(), String.valueOf(this.id), String.valueOf(request.getRequestId()));
+
+                // recreate the path
+                Stack<ActorRef> path = new Stack<>();
+                path.push(request.getRequester()); // requester: client
+                path.push(getSelf()); // L2 cache
+                System.out.println("recreated path: " + path);
+
                 if (request.getType().equals("read")) {
-
-                    // recreate the path
-                    Stack<ActorRef> path = new Stack<>();
-                    path.push(request.getRequester());
-                    path.push(getSelf());
-
-                    System.out.println("recreated path: " + path);
 
                     // forward the request to the parent (db)
                     // note that the db could have already been asked the same request from the crashed L1 cache
                     // but the response never arrived to the L2 cache (due to the L1 cache crash), so it's ok to ask again
                     getParent().tell(new ReadRequestMsg(request.getKey(), path, request.getRequestId()), getSelf());
                     log.info("[{} CACHE {}] Forwarded read request to {}", this.type_of_cache.toString(), String.valueOf(this.id), getParent().path().name());
-
-
                 } else if (request.getType().equals("write")) {
-                    //request.getRequester().tell(new WriteRequestMsg(request.getKey(), request.getValue(), request.getRequestId()), getSelf());
+
+                    // in this case we overwrite the same value in the db
+                    // if the db has already been asked the same request from the crashed L1 cache
+                    getParent().tell(new WriteRequestMsg(request.getKey(), request.getValue(), path, request.getRequestId()), getSelf());
+                    log.info("[{} CACHE {}] Forwarded read request to {}", this.type_of_cache.toString(), String.valueOf(this.id), getParent().path().name());
+                } else if (request.getType().equals("crit_read")) {
+                    //TODO
+                } else if (request.getType().equals("crit_write")) {
+                    //TODO
+                } else {
+                    log.error("[{} CACHE {}] Error: unknown request type {}", this.type_of_cache.toString(), String.valueOf(this.id), request.getType());
                 }
             }
         }
@@ -565,7 +574,7 @@ public class Cache extends AbstractActor{
 
             log.info("[{} CACHE {}] Data is not present in cache; key:{}", getCacheType().toString(), String.valueOf(getID()), readRequestMsg.getKey());
 
-            int delay = 30;
+            int delay = 1;
             addDelayInSeconds(delay);
             log.info("[{} CACHE {}] Added delay of {} seconds", getCacheType().toString(), String.valueOf(getID()), delay);
 
@@ -853,15 +862,10 @@ public class Cache extends AbstractActor{
             // L2 Cache 1 experience a timeout and sends a connection request to the database
             // therefore L2 Cache 1 has two requests to be completed
             retryRequests();
+        } else {
+            // edge case, not possible in the current implementation
+            log.info("[{} CACHE {}] Connection refused", getCacheType().toString(), String.valueOf(getID()));
         }
-
-
-
-
-
-
     }
-
-
 
 }

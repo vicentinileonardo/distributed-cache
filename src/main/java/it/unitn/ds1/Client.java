@@ -40,11 +40,13 @@ public class Client extends AbstractActor {
         //private boolean success; //maybe not needed
         private final long startTime = System.currentTimeMillis();
         private long endTime;
+        private long firstRequestId; // equal to the id of the first request sent for this operation
 
-        public ClientOperation(String operation, int key) {
+        public ClientOperation(String operation, int key, long firstRequestId) {
             this.operation = operation;
             this.key = key;
             this.finished = false;
+            this.firstRequestId = firstRequestId;
         }
 
         // Getters for the instance variables
@@ -70,6 +72,10 @@ public class Client extends AbstractActor {
 
         public long getEndTime() {
             return endTime;
+        }
+
+        public long getFirstRequestId() {
+            return firstRequestId;
         }
 
         public void setEndTime() {
@@ -197,31 +203,20 @@ public class Client extends AbstractActor {
 
     public void retryOperation(){
         if (operations.size() > 0){
-            //get last operation on the list
+            // get last operation on the list
             ClientOperation lastOp = operations.get(operations.size() - 1);
             if(lastOp.isFinished()){
                 log.info("[CLIENT " + id + "] Operation" + lastOp.getOperation() + " finished");
             }
 
-            String operation = lastOp.getOperation();
             //int delayInSeconds = rnd.nextInt(5);
             int delayInSeconds = 15; //to be changed, dynamic
 
-            switch(operation){
-                case "read":
-                    sendReadRequestMsg(lastOp.getKey(), delayInSeconds);
-                    log.info("[CLIENT " + id + "] Retrying read operation with key " + lastOp.getKey() + " with delay of " + delayInSeconds + " seconds");
-                    break;
-                case "write":
-                    //TODO
-                    break;
+            // we must differentiate between standard sendReadRequestMsg, sendWriteRequestMsg, etc
+            retrySendMsg(lastOp, delayInSeconds);
 
-
-                //TODO: add other operations
-                default:
-                    log.info("[CLIENT " + id + "] Operation not recognized");
-                    break;
-            }
+        } else {
+            log.info("[CLIENT " + id + "] No operations to retry");
         }
     }
 
@@ -250,10 +245,10 @@ public class Client extends AbstractActor {
         ReadRequestMsg msg = new ReadRequestMsg(key, path, requestId);
         log.info("[CLIENT " + id + "] Created read request msg to be sent to " + getParent().path().name() + " with key " + key + " and requestId " + msg.getRequestId());
 
-        //assumption: client can send only 1 request at a time
-        //if last operation of the client is finished or there are no operations, add new operation
+        // assumption: client can send only 1 request at a time
+        // if last operation of the client is finished or there are no operations, add new operation
         if ((operations.size() > 0 && operations.get(operations.size() - 1).isFinished()) || operations.size() == 0) {
-            operations.add(new ClientOperation("read", key));
+            operations.add(new ClientOperation("read", key, requestId));
             log.info("[CLIENT " + id + "] Created new read operation");
 
             getParent().tell(msg, getSelf());
@@ -267,10 +262,9 @@ public class Client extends AbstractActor {
             log.info("[CLIENT " + id + "] Cannot create new read operation, last operation not finished");
         }
 
-
     }
 
-    public void onReadResponseMsg(Message.ReadResponseMsg msg){
+    public void onReadResponseMsg(ReadResponseMsg msg){
         //receiveResponse(); //maybe not needed
         log.info("[CLIENT " + id + "] Received read response from " + getSender().path().name() + " with value " + msg.getValue() + " for key " + msg.getKey());
         operations.get(operations.size() - 1).setValue(msg.getValue());
@@ -288,14 +282,14 @@ public class Client extends AbstractActor {
 
         Stack<ActorRef> path = new Stack<>();
         path.push(getSelf());
-        long requestId = System.currentTimeMillis(); //To be modified
+        long requestId = System.currentTimeMillis(); // To be modified
         WriteRequestMsg msg = new WriteRequestMsg(key, value, path, requestId);
         log.info("[CLIENT " + id + "] Created write request msg to be sent to " + getParent().path().name() + " with key " + key + " and value " + value);
 
         //assumption: client can send only 1 request at a time
         //if last operation of the client is finished or there are no operations, add new operation
         if ((operations.size() > 0 && operations.get(operations.size() - 1).isFinished()) || operations.size() == 0) {
-            ClientOperation writeOp = new ClientOperation("write", key);
+            ClientOperation writeOp = new ClientOperation("write", key, requestId);
             writeOp.setValue(value); //since write operation has value
             operations.add(writeOp);
             log.info("[CLIENT " + id + "] Created new write operation");
@@ -310,6 +304,56 @@ public class Client extends AbstractActor {
             //if last operation is not finished
             log.info("[CLIENT " + id + "] Cannot create new write operation, last operation not finished");
         }
+
+    }
+
+    public void retrySendMsg(ClientOperation operation, int delayInSeconds){
+
+        System.out.println("Operations size: " + operations.size()); //debug, should be at least 1
+
+        Stack<ActorRef> path = new Stack<>();
+        path.push(getSelf());
+        long requestId = operation.getFirstRequestId(); // Retrieving the first request id of the operation
+
+        switch(operation.getOperation()) {
+            case "read":
+                log.info("[CLIENT " + id + "] Retrying sending read request msg, to be sent to " + getParent().path().name() + " with key " + operation.getKey());
+
+                addDelayInSeconds(delayInSeconds);
+                log.info("[CLIENT " + id + "] Delay of " + delayInSeconds + " seconds added");
+
+                ReadRequestMsg readRequestMsg = new ReadRequestMsg(operation.getKey(), path, requestId);
+                log.info("[CLIENT " + id + "] Created read request msg to be sent to " + getParent().path().name() + " with key " + readRequestMsg.getKey() + " and requestId " + readRequestMsg.getRequestId());
+
+                getParent().tell(readRequestMsg, getSelf());
+                log.info("[CLIENT " + id + "] Sent read request msg! to " + getParent().path().name());
+
+                startTimeout("read", getParent().path().name());
+                log.info("[CLIENT " + id + "] Started timeout for read request msg! to " + getParent().path().name());
+                break;
+            case "write":
+                log.info("[CLIENT " + id + "] Started creating write request msg, to be sent to " + getParent().path().name() + " with key " + operation.getKey() + " and value " + operation.getValue());
+
+                addDelayInSeconds(delayInSeconds);
+
+                WriteRequestMsg writeRequestMsg = new WriteRequestMsg(operation.getKey(), operation.getValue(), path, requestId);
+                log.info("[CLIENT " + id + "] Created write request msg to be sent to " + getParent().path().name() + " with key " + writeRequestMsg.getKey() + " and value " + writeRequestMsg.getValue());
+
+                getParent().tell(writeRequestMsg, getSelf());
+                log.info("[CLIENT " + id + "] Sent write request msg! to " + getParent().path().name());
+
+                startTimeout("write", getParent().path().name());
+                log.info("[CLIENT " + id + "] Started timeout for write request msg! to " + getParent().path().name());
+                break;
+            case "crit_read":
+                //TODO
+                break;
+            case "crit_write":
+                //TODO
+                break;
+        }
+
+
 
     }
 

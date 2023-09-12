@@ -6,7 +6,7 @@ clients:
   customNum: !!int 1
   timeouts:
     - type: !!str read
-      value: !!int 300
+      value: !!int 100
     - type: !!str crit_read
       value: !!int 10
     - type: !!str write
