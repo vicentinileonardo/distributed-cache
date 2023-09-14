@@ -337,7 +337,7 @@ public class DistributedCacheSystem {
 
         distributedCacheSystem.sendReadMsgs();
         sleep(150000);
-        distributedCacheSystem.sendWriteMsgs();
+        //distributedCacheSystem.sendWriteMsgs();
 
 
 

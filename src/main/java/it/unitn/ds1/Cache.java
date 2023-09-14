@@ -330,6 +330,7 @@ public class Cache extends AbstractActor{
         log.info("[{} CACHE {}] Set write request as fulfilled", this.type_of_cache.toString(), String.valueOf(this.id));
     }
 
+    // not used
     private void waitSomeTime(int time) {
 
         long t0 = System.currentTimeMillis();
@@ -479,10 +480,13 @@ public class Cache extends AbstractActor{
                     setParent(getDatabase());
                     getParent().tell(new RequestConnectionMsg("L2"), getSelf());
 
-                    //tell the client that the L1 cache is not available, so this L2 is connecting to the database, so client should wait more, maybe extend the timeout
-                    //ActorRef client = msg.getClient();
-                    //client.tell(new TimeoutElapsedMsg(), getSelf());
-                    //log.info("[{} CACHE {}] Sent timeout elapsed msg to {}", getCacheType().toString(), String.valueOf(getID()), client.path().name());
+                    // tell the client that the L1 cache is not available, so this L2 is connecting to the database, so client should wait more, maybe extending the timeout
+                    long requestId = msg.getRequestId();
+                    ActorRef client = this.requests.get(requestId).getRequester();
+                    TimeoutElapsedMsg timeoutElapsedMsg = new TimeoutElapsedMsg();
+                    timeoutElapsedMsg.setType("read");
+                    client.tell(timeoutElapsedMsg, getSelf());
+                    log.info("[{} CACHE {}] Sent timeout elapsed msg to {}", getCacheType().toString(), String.valueOf(getID()), client.path().name());
                 }
                 break;
             case "write":
@@ -494,7 +498,7 @@ public class Cache extends AbstractActor{
                     setParent(getDatabase());
                     getParent().tell(new RequestConnectionMsg("L2"), getSelf());
 
-                    //tell the client that the L1 cache is not available, so this L2 is connecting to the database, so client should wait more, maybe extend the timeout
+                    //tell the client that the L1 cache is not available, so this L2 is connecting to the database, so client should wait more, maybe extending the timeout
                     //ActorRef client = msg.getClient();
                     //client.tell(new TimeoutElapsedMsg(), getSelf());
                     //log.info("[{} CACHE {}] Sent timeout elapsed msg to {}", getCacheType().toString(), String.valueOf(getID()), client.path().name());
@@ -516,6 +520,10 @@ public class Cache extends AbstractActor{
         log.info("[{} CACHE {}] Sent response connection msg to {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
     }
 
+    // maybe not needed for caches
+    // since the database is always available
+    // and the only case is when the L1 cache should tell the L2 cache to wait more
+    // but since the db is always available, the L1 cache will never timeout waiting for a db response
     private void onTimeoutElapsedMsg(TimeoutElapsedMsg msg) {}
 
     // ----------READ MESSAGES LOGIC----------
@@ -853,6 +861,11 @@ public class Cache extends AbstractActor{
         log.info("[{} CACHE {}] Received response connection msg from {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
         if(msg.getResponse().equals("ACCEPTED")){
             log.info("[{} CACHE {}] Connection accepted", getCacheType().toString(), String.valueOf(getID()));
+
+            int delay = 80;
+            addDelayInSeconds(delay);
+            log.info("[{} CACHE {}] Delayed by {} seconds", getCacheType().toString(), String.valueOf(getID()), String.valueOf(delay));
+
 
             // since, unlike the clients, caches do not perform only 1 requests at time
             // we must retry all requests that are not yet completed

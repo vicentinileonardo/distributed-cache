@@ -160,12 +160,26 @@ public class Message {
     public static class TimeoutElapsedMsg implements Serializable{
         private int key;
         private int value;
+        private String type;
 
         public TimeoutElapsedMsg(){}
 
-        public TimeoutElapsedMsg(int key, int value){
+        public TimeoutElapsedMsg(int key, int value, String type){
             this.key = key;
             this.value = value;
+            this.type = type;
+        }
+
+        public int getValue(){
+            return this.value;
+        }
+
+        public int getKey(){
+            return this.key;
+        }
+
+        public String getType() {
+        	return this.type;
         }
 
         public void setKey(int key){
@@ -176,13 +190,10 @@ public class Message {
             this.value = value;
         }
 
-        public int getValue(){
-            return this.value;
+        public void setType(String type) {
+            this.type = type;
         }
 
-        public int getKey(){
-            return this.key;
-        }
     }
 
 

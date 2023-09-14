@@ -20,7 +20,7 @@ l2Caches:
   customNum: !!int 5
   timeouts:
     - type: !!str read
-      value: !!int 20
+      value: !!int 80
     - type: !!str crit_read
       value: !!int 10
     - type: !!str write

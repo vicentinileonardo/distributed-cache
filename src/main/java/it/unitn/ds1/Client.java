@@ -179,6 +179,12 @@ public class Client extends AbstractActor {
     //data structure to store current active timeouts, ex: <"connection": true>
     //private HashMap<String, Boolean> activeTimeouts = new HashMap<>();
 
+    // one-element list timeouts_to_skip
+    // values could be: "read", "write", "crit_read", "crit_write"
+    // "connection" is not considered since the "connection" operation is carried out by only one cache
+    // therefore there is no need to wait more time due to an upper level timeout
+    private List<String> timeouts_to_skip = new ArrayList<>();
+
     private boolean isResponseReceived() {
         return this.isResponseReceived;
     } //maybe not needed
@@ -392,13 +398,31 @@ public class Client extends AbstractActor {
         log.info("[CLIENT " + id + "] Received timeout msg of type " + msg.getType() + " with destination " + msg.getConnectionDestination());
 
         //check timeout msg type
+        System.out.println("msg type" + msg.getType());
         if(msg.getType() == "read" || msg.getType() == "write") {
+
+            System.out.println("inside first if");
             //check if operation is finished in the meantime
             if (operations.size() > 0 && operations.get(operations.size() - 1).isFinished()) {
                 log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " already finished");
                 log.info("[CLIENT " + id + "] Ignoring timeout msg");
                 return;
             }
+
+            // check if it is a timeout to be skipped
+            // use case: a L2 cache tells the client that it needs more time to fulfill client's request
+            System.out.println("timeouts to skip size: " + timeouts_to_skip.size());
+            if(timeouts_to_skip.size() > 0){
+                System.out.println("inside second if");
+                String current_op = operations.get(operations.size() - 1).getOperation();
+                if(timeouts_to_skip.get(0).equals(current_op)){
+                    timeouts_to_skip.remove(0);
+                    log.info("[CLIENT " + id + "] Skipping timeout msg, since parent is still processing the request and needs more time");
+                    return;
+                }
+            }
+
+
         }
 
         if(msg.getType() == "connection") {
@@ -410,7 +434,8 @@ public class Client extends AbstractActor {
         }
 
 
-        //the following is true for every timeout msg type: read, write, connection
+        // the following logic is true for every timeout msg type: read, write, connection
+        // we lost connection to the parent, so we need to find a new one
 
         this.isConnectedToParent = false;
 
@@ -440,11 +465,39 @@ public class Client extends AbstractActor {
 
     }
 
-    //not used for now
+    // use case: client receives a response from a L2 cache
+    // L2 cache tells the client that it needs more time to fulfill client's request
+
     private void onTimeoutElapsedMsg (TimeoutElapsedMsg msg){
-        receiveResponse();
         log.info("[CLIENT " + id + "] Received timeout elapsed msg from {}!", getSender().path().name());
-        log.info("[CLIENT " + id + "] Waiting for response from " + getParent().path().name());
+
+        // check what is the current operation ongoing (read, write, crit_read, crit_write)
+        // assumption: only one operation can be ongoing at a time per client
+        String current_op = operations.get(operations.size() - 1).getOperation();
+        //System.out.println("current op: " + current_op);
+        //System.out.println("msg type: " + msg.getType());
+        if(current_op != msg.getType()){
+            // should never happen with the current assumptions
+            log.info("[CLIENT " + id + "] Received timeout elapsed msg of type " + msg.getType() + " but current operation is " + current_op);
+            return;
+        }
+
+        // add to timeout_to_skip the operation type of the msg received
+        // that operation must match the current operation ongoing
+        // timeout_to_skip is a one-element list since only one operation can be ongoing at a time per client
+        // assumption: you get only one timeout elapsed msg per time
+        //System.out.println("timeouts to skip size: " + timeouts_to_skip.size());
+        if(timeouts_to_skip.size() == 0){
+            //System.out.println("inside if of timeout elapsed msg");
+            timeouts_to_skip.add(msg.getType());
+            log.info("[CLIENT " + id + "] Added " + msg.getType() + "timeout to timeouts_to_skip");
+        }
+
+        // start a new timeout with the same type as the current operation ongoing
+        startTimeout(msg.getType(), getSender().path().name());
+        log.info("[CLIENT " + id + "] Will wait for another timeout msg of type " + msg.getType() + " from " + getSender().path().name());
+        log.info("[CLIENT " + id + "] Started " + msg.getType() + " timeout");
+
     }
 
     public void onResponseConnectionMsg(ResponseConnectionMsg msg){
