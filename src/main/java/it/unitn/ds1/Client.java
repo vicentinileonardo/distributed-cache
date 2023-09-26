@@ -219,6 +219,7 @@ public class Client extends AbstractActor {
             int delayInSeconds = 15; //to be changed, dynamic
 
             // we must differentiate between standard sendReadRequestMsg, sendWriteRequestMsg, etc
+            // since we need to re use the same requestId
             retrySendMsg(lastOp, delayInSeconds);
 
         } else {
@@ -270,16 +271,6 @@ public class Client extends AbstractActor {
 
     }
 
-    public void onReadResponseMsg(ReadResponseMsg msg){
-        //receiveResponse(); //maybe not needed
-        log.info("[CLIENT " + id + "] Received read response from " + getSender().path().name() + " with value " + msg.getValue() + " for key " + msg.getKey());
-        operations.get(operations.size() - 1).setValue(msg.getValue());
-        operations.get(operations.size() - 1).setFinished(true);
-        operations.get(operations.size() - 1).setEndTime();
-        log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
-        log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
-    }
-
     public void sendWriteRequestMsg(int key, int value, int delayInSeconds){
 
         log.info("[CLIENT " + id + "] Started creating write request msg, to be sent to " + getParent().path().name() + " with key " + key + " and value " + value);
@@ -312,6 +303,10 @@ public class Client extends AbstractActor {
         }
 
     }
+
+
+
+
 
     public void retrySendMsg(ClientOperation operation, int delayInSeconds){
 
@@ -541,8 +536,28 @@ public class Client extends AbstractActor {
         sendWriteRequestMsg(msg.key, msg.value, delayInSeconds);
     }
 
+    public void onReadResponseMsg(ReadResponseMsg msg){
+        //receiveResponse(); //maybe not needed
+        log.info("[CLIENT " + id + "] Received read response from " + getSender().path().name() + " with value " + msg.getValue() + " for key " + msg.getKey());
+        operations.get(operations.size() - 1).setValue(msg.getValue());
+        operations.get(operations.size() - 1).setFinished(true);
+        operations.get(operations.size() - 1).setEndTime();
+        log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
+        log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
+    }
+
+    public void onCritReadResponseMsg(CritReadResponseMsg msg){
+        //receiveResponse(); //maybe not needed
+        log.info("[CLIENT " + id + "] Received read response from " + getSender().path().name() + " with value " + msg.getValue() + " for key " + msg.getKey());
+        operations.get(operations.size() - 1).setValue(msg.getValue());
+        operations.get(operations.size() - 1).setFinished(true);
+        operations.get(operations.size() - 1).setEndTime();
+        log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
+        log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
+    }
+
     private void onWriteResponseMsg(WriteResponseMsg msg) {
-        log.info("[CLIENT " + id + "] Received write response msg, with value " + msg.getValue() + "for key " + msg.getKey());
+        log.info("[CLIENT " + id + "] Received write response msg, with value " + msg.getValue() + " for key " + msg.getKey() + " from " + getSender().path().name());
 
         operations.get(operations.size() - 1).setValue(msg.getValue());
         operations.get(operations.size() - 1).setFinished(true);

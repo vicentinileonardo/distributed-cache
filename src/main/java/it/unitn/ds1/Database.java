@@ -140,17 +140,21 @@ public class Database extends AbstractActor {
     // ----------SENDING LOGIC----------
 
     private void sendWriteResponses(WriteRequestMsg writeRequestMsg, Set<ActorRef> caches) {
+
         for (ActorRef cache : caches) {
             // if the cache is not the sender, send a fill message
             if (!cache.equals(getSender())){
-                log.info("[DATABASE " + id + "] Sending a fill message to cache " + cache.path().name());
                 cache.tell(new FillMsg(writeRequestMsg.getKey(), writeRequestMsg.getValue()), getSelf());
                 log.info("[DATABASE " + id + "] Sent a fill message to cache " + cache.path().name());
             } else { // if the cache is the sender, send a write response message
                 log.info("[DATABASE " + id + "] Sending a write response message to cache " + cache.path().name());
                 Stack<ActorRef> newPath = new Stack<>();
                 newPath.addAll(writeRequestMsg.getPath());
-                newPath.pop();
+                System.out.println("[db, sendWriteResponses] newPath: " + newPath);
+                //print last element
+                System.out.println("[db, sendWriteResponses] newPath.getLast(): " + newPath.lastElement());
+
+                System.out.println("[db, sendWriteResponses] newPath: " + newPath);
                 cache.tell(new WriteResponseMsg(writeRequestMsg.getKey(), writeRequestMsg.getValue(), newPath, writeRequestMsg.getRequestId()), getSelf());
                 log.info("[DATABASE " + id + "] Sent a write response message to cache " + cache.path().name());
             }
@@ -168,6 +172,7 @@ public class Database extends AbstractActor {
                 .match(ReadRequestMsg.class, this::onReadRequestMsg)
                 .match(WriteRequestMsg.class, this::onWriteRequestMsg)
                 .match(RequestConnectionMsg.class, this::onRequestConnectionMsg)
+                .match(RequestUpdatedDataMsg.class, this::onRequestUpdatedDataMsg)
                 .matchAny(o -> System.out.println("Database received unknown message from " + getSender()))
                 .build();
     }
@@ -221,6 +226,7 @@ public class Database extends AbstractActor {
 
             int value = getData(readRequestMsg.getKey());
 
+            System.out.println("PATH on db!!!! : " + readRequestMsg.getPath());
             ReadResponseMsg readResponseMsg = new ReadResponseMsg(readRequestMsg.getKey(), value, readRequestMsg.getPath(), readRequestMsg.getRequestId());
             child.tell(readResponseMsg, getSelf());
             //CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey() + " and sent it to cache " + child.path().name());
@@ -256,8 +262,22 @@ public class Database extends AbstractActor {
         if (!L2_caches.isEmpty()) {
             sendWriteResponses(msg, L2_caches);
             log.info("[DATABASE " + id + "] Sending write responses ALSO to L2 caches");
+        } else {
+            log.info("[DATABASE " + id + "] No L2 caches connected directly with the database");
         }
 
+    }
+
+    public void onRequestUpdatedDataMsg(RequestUpdatedDataMsg msg){
+        Map<Integer, Integer> tmpData = new HashMap<>();
+
+        // get the values for the keys in the message
+        for (Integer key : msg.getKeys()){
+            tmpData.put(key, this.data.get(key));
+        }
+
+        getSender().tell(new ResponseUpdatedDataMsg(tmpData), getSelf());
+        log.info("[DATABASE " + id + "] Sent a response updated data message to " + getSender().path().name());
     }
 
     // ----------GENERAL DATABASE MESSAGES LOGIC----------

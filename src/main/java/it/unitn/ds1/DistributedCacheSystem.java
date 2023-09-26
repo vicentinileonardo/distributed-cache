@@ -126,8 +126,11 @@ public class DistributedCacheSystem {
         int clientNum = 0;
 
         int totalClientsNum = configuration.getClients().getCustomNum();
+        System.out.println("Total clients: " + totalClientsNum);
         int clientsPerL2Cache = totalClientsNum / totalL2Num;
+        System.out.println("Clients per L2 cache: " + clientsPerL2Cache);
         int clientsToSpare = totalClientsNum % totalL2Num;
+        System.out.println("Clients to spare: " + clientsToSpare);
 
         for (ActorRef l2Cache : l2CacheActors) {
             if (clientsPerL2Cache == 0 && clientsToSpare == 0) {
@@ -146,6 +149,8 @@ public class DistributedCacheSystem {
             }
             totalClients += clientNum;
         }
+        System.out.println("Total clients: " + totalClients);
+        System.out.println("Total clients num: " + totalClientsNum);
         System.out.println("Client " + (totalClients == totalClientsNum) );
 
         this.master = system.actorOf(Master.props(this.l1CacheActors, this.l2CacheActors, this.clientActors), "master");
@@ -256,7 +261,7 @@ public class DistributedCacheSystem {
         System.out.println("L1 caches initialized");
     }
 
-    private void sendReadMsgs() {
+    private void sendReadMsgs(int clientId) {
         ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
 
         // generate a random number
@@ -266,14 +271,14 @@ public class DistributedCacheSystem {
         // HashSet.size - 1
         int rndmNumber = rndm.nextInt(this.clientActors.size());
         ActorRef client = tmpArray[rndmNumber];
-        //ActorRef client = tmpArray[0];
+        //ActorRef client = tmpArray[clientId];
         int rndmKey = rndm.nextInt(10);
         int specificKey = 4;
         Message.StartReadRequestMsg msg = new Message.StartReadRequestMsg(specificKey);
         client.tell(msg, ActorRef.noSender());
     }
 
-    private void sendWriteMsgs() {
+    private void sendWriteMsgs(int clientId) {
         ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
 
         // generate a random number
@@ -284,7 +289,7 @@ public class DistributedCacheSystem {
         int rndmNumber = rndm.nextInt(this.clientActors.size());
 
         ActorRef client = tmpArray[rndmNumber];
-        //ActorRef client = tmpArray[0];
+        //ActorRef client = tmpArray[clientId];
 
         int rndmKey = rndm.nextInt(10);
         int rndmValue = rndm.nextInt(100);
@@ -335,9 +340,13 @@ public class DistributedCacheSystem {
                 .bind(concat);
 
 
-        distributedCacheSystem.sendReadMsgs();
-        sleep(150000);
-        //distributedCacheSystem.sendWriteMsgs();
+        System.out.println("TESTTESTTEST");
+        //distributedCacheSystem.sendReadMsgs(0);
+        //sleep(1000);
+        distributedCacheSystem.sendWriteMsgs(1);
+        //sleep(1000);
+        //distributedCacheSystem.sendReadMsgs(2);
+        //sleep(900000000);
 
 
 

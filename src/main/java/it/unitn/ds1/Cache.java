@@ -108,8 +108,8 @@ public class Cache extends AbstractActor{
     private Map<Long, Request> requests = new HashMap<>();
 
     private HashSet<Integer> recoveredKeys = new HashSet<>();
-    private HashMap<ActorRef, Map<Integer, Integer>> recoveredValuesForChild = new HashMap<>();
-    private HashSet<ActorRef> childrenToRecover = new HashSet<>();
+    private HashMap<ActorRef, Map<Integer, Integer>> recoveredValuesOfSources = new HashMap<>();
+    private HashSet<ActorRef> childrenSources = new HashSet<>();
 
     // since we use the same class for both types of cache
     // we don't distinguish between different types of children
@@ -330,16 +330,6 @@ public class Cache extends AbstractActor{
         log.info("[{} CACHE {}] Set write request as fulfilled", this.type_of_cache.toString(), String.valueOf(this.id));
     }
 
-    // not used
-    private void waitSomeTime(int time) {
-
-        long t0 = System.currentTimeMillis();
-        long timeSpent = 0;
-        while (timeSpent <= time * 1000L) {
-            timeSpent = System.currentTimeMillis() - t0;
-        }
-    }
-
     public void addDelayInSeconds(int seconds) {
         try {
             log.info("[{} CACHE {}] Adding delay of {} seconds", this.type_of_cache.toString(), String.valueOf(this.id), String.valueOf(seconds));
@@ -423,22 +413,23 @@ public class Cache extends AbstractActor{
         return receiveBuilder()
                 .match(StartInitMsg.class, this::onStartInitMsg)
                 .match(InitMsg.class, this::onInitMsg)
+                .match(DummyMsg.class, this::onDummyMsg)
                 .match(ReadRequestMsg.class, this::onReadRequestMsg)
                 .match(ReadResponseMsg.class, this::onReadResponseMsg)
                 .match(WriteRequestMsg.class, this::onWriteRequestMsg)
                 .match(WriteResponseMsg.class, this::onWriteResponseMsg)
                 .match(FillMsg.class, this::onFillMsg)
-                .match(DummyMsg.class, this::onDummyMsg)
-                // Timeout messages
                 .match(RequestConnectionMsg.class, this::onRequestConnectionMsg)
-                // Crash and recovery messages
+                .match(ResponseConnectionMsg.class, this::onResponseConnectionMsg)
+                .match(RequestDataRecoverMsg.class, this::onRequestDataRecoverMsg)
+                .match(ResponseDataRecoverMsg.class, this::onResponseDataRecoverMsg)
+                .match(UpdateDataMsg.class, this::onUpdateDataMsg)
+                .match(ResponseUpdatedDataMsg.class, this::onResponseUpdatedDataMsg)
                 .match(CrashMsg.class, this::onCrashMsg)
                 .match(RecoverMsg.class, this::onRecoverMsg)
                 .match(TimeoutMsg.class, this::onTimeoutMsg)
                 .match(TimeoutElapsedMsg.class, this::onTimeoutElapsedMsg)
                 .match(InfoItemsMsg.class, this::onInfoItemsMsg)
-                .match(ResponseConnectionMsg.class, this::onResponseConnectionMsg)
-                // Catch all other messages
                 .matchAny(o -> log.info("[{} CACHE {}] Received unknown message from {} {}!",
                         getCacheType().toString(), String.valueOf(getID()), getSender().path().name(),
                         o.getClass().getName()))
@@ -541,7 +532,7 @@ public class Cache extends AbstractActor{
         } else if (readRequestMsg.getPathSize() == 2) {
             receivedReadRequest(getSender(), "L2", readRequestMsg);
         } else {
-            log.error("[{} CACHE {}] Probably wrong route!",  getCacheType().toString(), String.valueOf(getID()));
+            log.error("[{} CACHE {}] [ORRM_1] Probably wrong route!",  getCacheType().toString(), String.valueOf(getID()));
         }
 
         log.info("[{} CACHE {}] Request log: {}", getCacheType().toString(), String.valueOf(getID()), this.requests.toString());
@@ -553,8 +544,7 @@ public class Cache extends AbstractActor{
             // 1 means that the request is coming from a client -> LL: [Client]
             // 2 means that the request is coming from a L2 cache -> LL: [Client, L2_Cache]
             if(readRequestMsg.getPathSize() != 1 && readRequestMsg.getPathSize() != 2){
-                //CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Probably wrong route!");
-                log.error("[{} CACHE {}] Probably wrong route!",  getCacheType().toString(), String.valueOf(getID()));
+                log.error("[{} CACHE {}] [ORRM_2] Probably wrong route!",  getCacheType().toString(), String.valueOf(getID()));
                 //TODO: send special error message to client or master
             }
 
@@ -613,8 +603,7 @@ public class Cache extends AbstractActor{
         // other values are not allowed
 
         if(readResponseMsg.getPathSize() != 2 && readResponseMsg.getPathSize() != 3){
-            //CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Probably wrong route!");
-            log.info("[{} CACHE {}] Probably wrong route!", getCacheType().toString(), String.valueOf(getID()));
+            log.info("[{} CACHE {}] [ORResM] Probably wrong route!", getCacheType().toString(), String.valueOf(getID()));
             //TODO: send special error message to client or master
         }
 
@@ -625,6 +614,8 @@ public class Cache extends AbstractActor{
         //remove last element from path, which is the current cache
         newPath.pop();
 
+        System.out.println("Path size in cache!!! " + newPath.size());
+
         //child can be a client or a l2 cache
         ActorRef child = newPath.get(newPath.size()-1); //get (not remove) last element from path
 
@@ -633,10 +624,6 @@ public class Cache extends AbstractActor{
             //CustomPrint.print(classString, type_of_cache.toString() + " ", String.valueOf(id), " Child not present in children list!");
             log.info("[{} CACHE {}] Child not present in children list!", getCacheType().toString(), String.valueOf(getID()));
         }
-
-        //test print msg
-        //InfoItemsMsg infoItemsMsg = new InfoItemsMsg();
-        //getSelf().tell(infoItemsMsg, getSelf());
 
         //send response to child
         //either client or l2 cache
@@ -667,7 +654,7 @@ public class Cache extends AbstractActor{
         } else if (writeRequestMsg.getPathSize() == 2) {
             receivedWriteRequest(getSender(), "L2", writeRequestMsg);
         } else {
-            log.error("[{} CACHE {}] Probably wrong route!",  getCacheType().toString(), String.valueOf(getID()));
+            log.error("[{} CACHE {}] [OWRM] Probably wrong route!",  getCacheType().toString(), String.valueOf(getID()));
         }
 
         //adding cache to path
@@ -682,31 +669,54 @@ public class Cache extends AbstractActor{
         log.info("[{} CACHE {}] Sent write msg to {}", getCacheType().toString(), String.valueOf(getID()), getParent().path().name());
 
         startTimeout("write", upperWriteRequestMsg.getRequestId());
+        log.info("[{} CACHE {}] Started timeout for write request", getCacheType().toString(), String.valueOf(getID()));
 
     }
 
     private void onWriteResponseMsg(WriteResponseMsg writeResponseMsg){
 
+        //addDelayInSeconds(10);
+        //log.info("[{} CACHE {}] Added delay of 10 seconds", getCacheType().toString(), String.valueOf(getID()));
+
         log.info("[{} CACHE {}] Received write response msg; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), writeResponseMsg.getKey(), writeResponseMsg.getValue());
+        log.info("[{} CACHE {}] received from {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
 
         if (data.containsKey(writeResponseMsg.getKey())){
             data.put(writeResponseMsg.getKey(), writeResponseMsg.getValue());
             log.info("[{} CACHE {}] Added data to cache; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), writeResponseMsg.getKey(), writeResponseMsg.getValue());
         }
 
-        System.out.println("TEST, cache " + getCacheType().toString() + " " + getID());
-        System.out.println("TEST, cache " + writeResponseMsg.getPathSize());
-        System.out.println("TEST, cache " + writeResponseMsg.getPath().toString());
+        log.info("[{} CACHE {}] Path: {}", getCacheType().toString(), String.valueOf(getID()), writeResponseMsg.getPath().toString());
 
         if(writeResponseMsg.getPathSize() != 2 && writeResponseMsg.getPathSize() != 3){
-            log.info("[{} CACHE {}] Probably wrong route!", getCacheType().toString(), String.valueOf(getID()));
-            //TODO: send special error message to client or master
+            log.info("[{} CACHE {}] [OWRres] Probably wrong route!", getCacheType().toString(), String.valueOf(getID()));
         }
 
-        ActorRef destination = writeResponseMsg.getPath().pop();
+        //create new path without the current cache
+        Stack<ActorRef> newPath = new Stack<>();
+        newPath.addAll(writeResponseMsg.getPath());
+
+        //remove last element from path, which is the current cache
+        newPath.pop();
+        log.info("[{} CACHE {}] new Path size in cache: {}", getCacheType().toString(), String.valueOf(getID()), newPath.size());
+        log.info("[{} CACHE {}] new Path: {}", getCacheType().toString(), String.valueOf(getID()), newPath.toString());
+        //destination can be a client or a l2 cache, pop without removing
+        ActorRef destination = newPath.get(newPath.size()-1);
+        log.info("[{} CACHE {}] Destination: {}", getCacheType().toString(), String.valueOf(getID()), destination.path().name());
+
+        //check if child is between the children of this cache
+        if (!getChildren().contains(destination)) {
+            //log children
+            for (ActorRef child : getChildren()) {
+                log.info("[{} CACHE {}] Child: {}", getCacheType().toString(), String.valueOf(getID()), child.path().name());
+            }
+            log.info("[{} CACHE {}] Child not present in children list!", getCacheType().toString(), String.valueOf(getID()));
+        }
+
+        WriteResponseMsg response = new WriteResponseMsg(writeResponseMsg.getKey(), writeResponseMsg.getValue(), newPath, writeResponseMsg.getRequestId());
 
         // to propagate the response to the path of the request
-        destination.tell(writeResponseMsg, getSelf());
+        destination.tell(response, getSelf());
         log.info("[{} CACHE {}] Sent write response msg to {}", getCacheType().toString(), String.valueOf(getID()), destination.path().name());
 
         // to propagate to children in the subtree of the L1 cache used to write the data
@@ -714,8 +724,8 @@ public class Cache extends AbstractActor{
         if (type_of_cache == TYPE.L1) {
             for (ActorRef child : getChildren()) {
                 if (!child.equals(destination)) {
-                    child.tell(new FillMsg(writeResponseMsg.getKey(), writeResponseMsg.getValue()), getSelf());
-                    log.info("[{} CACHE {}] Sent fill msg to {}", getCacheType().toString(), String.valueOf(getID()), child.path().name());
+                    //child.tell(new FillMsg(writeResponseMsg.getKey(), writeResponseMsg.getValue()), getSelf());
+                    //log.info("[{} CACHE {}] Sent fill msg to {}", getCacheType().toString(), String.valueOf(getID()), child.path().name());
                 }
             }
         }
@@ -784,61 +794,98 @@ public class Cache extends AbstractActor{
     }
 
     private void onRecoverMsg (RecoverMsg msg){
+
+        log.info("[{} CACHE {}] Received recover msg", getCacheType(), getID());
+
         if (isCrashed()) {
             recover();
             // L2 caches does not need to be repopulated with data after crash
             // they will repopulate with data coming from new reads
+            // L1 caches are repopulated with data from their children
             if (getCacheType() == TYPE.L1) {
                 if (hasChildren()) {
+                    // for every L2 cache child, request data
                     for (ActorRef child : getChildren()) {
                         child.tell(new RequestDataRecoverMsg(), getSelf());
-                        childrenToRecover.add(child);
+                        childrenSources.add(child);
+                        log.info("[{} CACHE {}] Sent request data recover msg to {}", getCacheType(), getID(), child.path().name());
                     }
                 }
             }
         }
     }
 
+    // this logic is executed only by L1 caches
     private void onResponseDataRecoverMsg (ResponseDataRecoverMsg msg){
-        childrenToRecover.remove(getSender());
-        if (msg.getParent() != getSelf()) {
-            children.remove(getSender());
+        log.info("[{} CACHE {}] Received response data recover msg from {}", getCacheType(), getID(), getSender().path().name());
+
+        childrenSources.remove(getSender());
+        if (msg.getParent() != getSelf()) { //TODO? should never happen maybe?
+            children.remove(getSender()); //?
         }
 
         recoveredKeys.addAll(msg.getData().keySet());
-        recoveredValuesForChild.put(getSender(), msg.getData());
+        log.info("[{} CACHE {}] Added keys to recovered keys: {}", getCacheType(), getID(), recoveredKeys.toString());
+        recoveredValuesOfSources.put(getSender(), msg.getData());
+        log.info("[{} CACHE {}] Added data to recovered values of sources: {}", getCacheType(), getID(), recoveredValuesOfSources.toString());
 
-        if (childrenToRecover.isEmpty()) {
+        // assumption: we never lose ResponseDataRecoverMsg (or add some sort of timeout)
+        if (childrenSources.isEmpty()) {
+            // all children have responded, recoveredKeys contains all the keys that need to be recovered
+            // ask the db for tha values of the recovered keys
             getParent().tell(new RequestUpdatedDataMsg(recoveredKeys), getSelf());
+            log.info("[{} CACHE {}] Sent request updated data msg to {}", getCacheType(), getID(), getParent().path().name());
         }
     }
 
+    // this logic is executed only by L2 caches
     private void onRequestDataRecoverMsg (RequestDataRecoverMsg msg){
+        log.info("[{} CACHE {}] Received request data recover msg from {}", getCacheType(), getID(), getSender().path().name());
+
+        // L2 cache will respond with all the data it has
         getSender().tell(new ResponseDataRecoverMsg(getData(), getParent()), getSelf());
     }
 
+    // this logic is executed only by L1 caches, msg arrives from db
     private void onResponseUpdatedDataMsg (ResponseUpdatedDataMsg msg){
-        addData(msg.getData());
+        log.info("[{} CACHE {}] Received response updated data msg from {}", getCacheType(), getID(), getSender().path().name());
 
-        for (Map.Entry<ActorRef, Map<Integer, Integer>> entry : this.recoveredValuesForChild.entrySet()) {
+        // store the data received from the db
+        addData(msg.getData());
+        log.info("[{} CACHE {}] Received response updated data msg from {}", getCacheType(), getID(), getSender().path().name());
+
+        // update the data of the children, if needed
+        for (Map.Entry<ActorRef, Map<Integer, Integer>> entry : this.recoveredValuesOfSources.entrySet()) {
             ActorRef child = entry.getKey();
             Map<Integer, Integer> tmpData = new HashMap<>();
             for (Map.Entry<Integer, Integer> dataEntry : entry.getValue().entrySet()) {
                 int key = dataEntry.getKey();
                 int value = dataEntry.getValue();
+
+                // we send only the data that is different from the one the child already has
                 if (msg.getData().get(key) != value) {
+                    System.out.println("different data");
+                    System.out.println("msg.getData().get(key) = " + msg.getData().get(key));
+                    System.out.println("value = " + value);
                     tmpData.put(key, value);
+                    log.info("[{} CACHE {}] Found new data for child {}", getCacheType(), getID(), child.path().name());
                 }
             }
 
             if (!tmpData.isEmpty()) {
                 child.tell(new UpdateDataMsg(tmpData), getSelf());
+                log.info("[{} CACHE {}] Sent update data msg to child {}", getCacheType(), getID(), child.path().name());
             }
         }
     }
 
+    // this logic is executed only by L2 caches, msg arrives from L1 cache
+    // after L1 cache has recovered from crash and has received data from db
     private void onUpdateDataMsg (UpdateDataMsg msg){
+        log.info("[{} CACHE {}] Received update data msg from {}", getCacheType(), getID(), getSender().path().name());
+
         addData(msg.getData());
+        log.info("[{} CACHE {}] Updated data", getCacheType(), getID());
     }
 
     private void onInfoItemsMsg (InfoItemsMsg msg){
