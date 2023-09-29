@@ -320,6 +320,12 @@ public class Cache extends AbstractActor{
         log.info("[{} CACHE {}] Put write request in hashmap", this.type_of_cache.toString(), String.valueOf(this.id));
     }
 
+    private void receivedCriticalReadRequest(ActorRef requester, String requesterType, CriticalReadRequestMsg msg) {
+        Request request = new Request("crit_read", requesterType, requester, msg.getKey(), msg.getRequestId());
+        this.requests.put(request.getRequestId(), request);
+        log.info("[{} CACHE {}] Put critical read request in hashmap", this.type_of_cache.toString(), String.valueOf(this.id));
+    }
+
     public void sentReadResponse(long requestId) {
         this.requests.get(requestId).setFulfilled();
         log.info("[{} CACHE {}] Set read request as fulfilled", this.type_of_cache.toString(), String.valueOf(this.id));
@@ -328,6 +334,11 @@ public class Cache extends AbstractActor{
     public void sentWriteResponse(long requestId) {
         this.requests.get(requestId).setFulfilled();
         log.info("[{} CACHE {}] Set write request as fulfilled", this.type_of_cache.toString(), String.valueOf(this.id));
+    }
+
+    public void sentCriticalReadResponse(long requestId) {
+        this.requests.get(requestId).setFulfilled();
+        log.info("[{} CACHE {}] Set critical read request as fulfilled", this.type_of_cache.toString(), String.valueOf(this.id));
     }
 
     public void addDelayInSeconds(int seconds) {
@@ -418,6 +429,8 @@ public class Cache extends AbstractActor{
                 .match(ReadResponseMsg.class, this::onReadResponseMsg)
                 .match(WriteRequestMsg.class, this::onWriteRequestMsg)
                 .match(WriteResponseMsg.class, this::onWriteResponseMsg)
+                .match(CriticalReadRequestMsg.class, this::onCriticalReadRequestMsg)
+                .match(CriticalReadResponseMsg.class, this::onCriticalReadResponseMsg)
                 .match(FillMsg.class, this::onFillMsg)
                 .match(RequestConnectionMsg.class, this::onRequestConnectionMsg)
                 .match(ResponseConnectionMsg.class, this::onResponseConnectionMsg)
@@ -513,7 +526,7 @@ public class Cache extends AbstractActor{
 
     // maybe not needed for caches
     // since the database is always available
-    // and the only case is when the L1 cache should tell the L2 cache to wait more
+    // and the only case would be when the L1 cache should tell the L2 cache to wait more
     // but since the db is always available, the L1 cache will never timeout waiting for a db response
     private void onTimeoutElapsedMsg(TimeoutElapsedMsg msg) {}
 
@@ -521,7 +534,6 @@ public class Cache extends AbstractActor{
 
     public void onReadRequestMsg(ReadRequestMsg readRequestMsg){
 
-        //CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Received read request msg from " + getSender());
         log.info("[{} CACHE {}] Received read request msg from {}, asking for key {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name(), readRequestMsg.getKey());
 
         // check size of path
@@ -553,7 +565,6 @@ public class Cache extends AbstractActor{
 
             //check if child is between the children of this cache
             if (!getChildren().contains(child)){
-                //CustomPrint.print(classString, type_of_cache.toString()+" ", String.valueOf(id), " Child not present in children list!");
                 log.error("[{} CACHE {}] Child not present in children list!",  getCacheType().toString(), String.valueOf(getID()));
                 //TODO: send special error message to client or master
             }
@@ -585,7 +596,7 @@ public class Cache extends AbstractActor{
             getParent().tell(upperReadRequestMsg, getSelf());
             log.info("[{} CACHE {}] Sent read request msg to {}", getCacheType().toString(), String.valueOf(getID()), getParent().path().name());
 
-            startTimeout("read", readRequestMsg.getRequestId());
+            startTimeout("read", upperReadRequestMsg.getRequestId());
         }
     }
 
@@ -724,8 +735,8 @@ public class Cache extends AbstractActor{
         if (type_of_cache == TYPE.L1) {
             for (ActorRef child : getChildren()) {
                 if (!child.equals(destination)) {
-                    //child.tell(new FillMsg(writeResponseMsg.getKey(), writeResponseMsg.getValue()), getSelf());
-                    //log.info("[{} CACHE {}] Sent fill msg to {}", getCacheType().toString(), String.valueOf(getID()), child.path().name());
+                    child.tell(new FillMsg(writeResponseMsg.getKey(), writeResponseMsg.getValue()), getSelf());
+                    log.info("[{} CACHE {}] Sent fill msg to {}", getCacheType().toString(), String.valueOf(getID()), child.path().name());
                 }
             }
         }
@@ -740,7 +751,10 @@ public class Cache extends AbstractActor{
         if (this.data.containsKey(msg.getKey())){
             this.data.put(msg.getKey(), msg.getValue());
             log.info("[{} CACHE {}] Added data to cache; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), msg.getKey(), msg.getValue());
+        } else {
+            log.info("[{} CACHE {}] Data not present in cache, no adding needed", getCacheType().toString(), String.valueOf(getID()));
         }
+
 
         // propagate to children
         // TODO: can we assume that if the value is not present in the current cache, it is not present in the children?
@@ -754,6 +768,87 @@ public class Cache extends AbstractActor{
             }
             log.info("[{} CACHE {}] Sent fill msg to cache children", getCacheType().toString(), String.valueOf(getID()));
         }
+    }
+
+    public void onCriticalReadRequestMsg(CriticalReadRequestMsg criticalReadRequestMsg){
+
+        int delay = 1;
+
+        log.info("[{} CACHE {}] Received critical read request msg from {}, asking for key {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name(), criticalReadRequestMsg.getKey());
+
+        // check size of path
+        // 1 means that the request is coming from a client -> LL: [Client]
+        // 2 means that the request is coming from a L2 cache -> LL: [Client, L2_Cache]
+        if(criticalReadRequestMsg.getPathSize() == 1) {
+            receivedCriticalReadRequest(getSender(), "client", criticalReadRequestMsg);
+        } else if (criticalReadRequestMsg.getPathSize() == 2) {
+            receivedCriticalReadRequest(getSender(), "L2", criticalReadRequestMsg);
+        } else {
+            log.error("[{} CACHE {}] Probably wrong route!",  getCacheType().toString(), String.valueOf(getID()));
+        }
+
+        log.info("[{} CACHE {}] Request log: {}", getCacheType().toString(), String.valueOf(getID()), this.requests.toString());
+
+
+        addDelayInSeconds(delay);
+        log.info("[{} CACHE {}] Added delay of {} seconds", getCacheType().toString(), String.valueOf(getID()), delay);
+
+        //adding cache to path
+        Stack<ActorRef> newPath = new Stack<>();
+        newPath.addAll(criticalReadRequestMsg.getPath());
+        newPath.add(getSelf());
+
+        CriticalReadRequestMsg upperCriticalReadRequestMsg = new CriticalReadRequestMsg(criticalReadRequestMsg.getKey(), newPath, criticalReadRequestMsg.getRequestId());
+        getParent().tell(upperCriticalReadRequestMsg, getSelf());
+        log.info("[{} CACHE {}] Sent read request msg to {}", getCacheType().toString(), String.valueOf(getID()), getParent().path().name());
+
+        startTimeout("crit_read", upperCriticalReadRequestMsg.getRequestId());
+
+    }
+
+    //response from database to l1 cache
+    //or response from l1 cache to l2 cache
+    public void onCriticalReadResponseMsg(CriticalReadResponseMsg criticalReadResponseMsg){
+
+        //add data to cache
+        addData(criticalReadResponseMsg.getKey(), criticalReadResponseMsg.getValue());
+        log.info("[{} CACHE {}] Added data to cache; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), criticalReadResponseMsg.getKey(), criticalReadResponseMsg.getValue());
+
+        //check size of path:
+        // 2 means that the response is for a client -> LL:[Client, L2_Cache]
+        // 3 means that the response is for a l2 cache -> LL:[Client, L2_Cache, L1_Cache]
+        // other values are not allowed
+
+        if(criticalReadResponseMsg.getPathSize() != 2 && criticalReadResponseMsg.getPathSize() != 3){
+            log.info("[{} CACHE {}] Probably wrong route!", getCacheType().toString(), String.valueOf(getID()));
+            //TODO: send special error message to client or master
+        }
+
+        //create new path without the current cache
+        Stack<ActorRef> newPath = new Stack<>();
+        newPath.addAll(criticalReadResponseMsg.getPath());
+
+        //remove last element from path, which is the current cache
+        newPath.pop();
+
+        //child can be a client or a l2 cache
+        ActorRef child = newPath.get(newPath.size()-1); //get (not remove) last element from path
+
+        //check if child is between the children of this cache
+        if (!getChildren().contains(child)) {
+            log.info("[{} CACHE {}] Child not present in children list!", getCacheType().toString(), String.valueOf(getID()));
+        }
+
+        //send response to child
+        //either client or l2 cache
+        CriticalReadResponseMsg response = new CriticalReadResponseMsg(criticalReadResponseMsg.getKey(), criticalReadResponseMsg.getValue(), newPath, criticalReadResponseMsg.getRequestId());
+        child.tell(response, getSelf());
+        log.info("[{} CACHE {}] Sent critical read response msg to {}", getCacheType().toString(), String.valueOf(getID()), child.path().name());
+
+        sentCriticalReadResponse(criticalReadResponseMsg.getRequestId());
+
+        log.info("[{} CACHE {}] Request completed", getCacheType().toString(), String.valueOf(getID()));
+        log.info("[{} CACHE {}] All Requests: {}", getCacheType().toString(), String.valueOf(getID()), this.requests.toString());
     }
 
 

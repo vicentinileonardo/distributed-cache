@@ -171,6 +171,7 @@ public class Database extends AbstractActor {
                 .match(DropDatabaseMsg.class, this::onDropDatabaseMsg)
                 .match(ReadRequestMsg.class, this::onReadRequestMsg)
                 .match(WriteRequestMsg.class, this::onWriteRequestMsg)
+                .match(CriticalReadRequestMsg.class, this::onCriticalReadRequestMsg)
                 .match(RequestConnectionMsg.class, this::onRequestConnectionMsg)
                 .match(RequestUpdatedDataMsg.class, this::onRequestUpdatedDataMsg)
                 .matchAny(o -> System.out.println("Database received unknown message from " + getSender()))
@@ -266,6 +267,35 @@ public class Database extends AbstractActor {
             log.info("[DATABASE " + id + "] No L2 caches connected directly with the database");
         }
 
+    }
+
+    public void onCriticalReadRequestMsg(CriticalReadRequestMsg criticalReadRequestMsg){
+        log.info("[DATABASE " + id + "] Received a critical read request for key " + criticalReadRequestMsg.getKey() + " from cache " + getSender().path().name());
+
+        if (isDataPresent(criticalReadRequestMsg.getKey())){
+
+            log.info("[DATABASE " + id + "] Data for key " + criticalReadRequestMsg.getKey() + " is present in database");
+
+            //send response to child (l1 cache) (or l2 cache, if crashes are considered)
+            ActorRef child = criticalReadRequestMsg.getLast();
+
+            int value = getData(criticalReadRequestMsg.getKey());
+
+            CriticalReadResponseMsg criticalReadResponseMsg = new CriticalReadResponseMsg(criticalReadRequestMsg.getKey(), value, criticalReadRequestMsg.getPath(), criticalReadRequestMsg.getRequestId());
+            child.tell(criticalReadResponseMsg, getSelf());
+            log.info("[DATABASE " + id + "] Read value " + value + " for key " + criticalReadRequestMsg.getKey() + " and sent it to cache " + child.path().name());
+
+        } else { // data not present, the scenario should not be possible
+            //as a matter of fact the client should pick key value that are stored maybe in a config file, to be sure the key is present at least in the database
+            //for now, the database will send a response to the client with a value of -1
+            ActorRef child = criticalReadRequestMsg.getLast();
+            int value = -1;
+
+            CriticalReadResponseMsg criticalReadResponseMsg = new CriticalReadResponseMsg(criticalReadRequestMsg.getKey(), value, criticalReadRequestMsg.getPath(), criticalReadRequestMsg.getRequestId());
+            child.tell(criticalReadResponseMsg, getSelf());
+            log.info("[DATABASE " + id + "] Read value " + value + " for key " + criticalReadRequestMsg.getKey() + " and sent it to cache " + child.path().name());
+
+        }
     }
 
     public void onRequestUpdatedDataMsg(RequestUpdatedDataMsg msg){

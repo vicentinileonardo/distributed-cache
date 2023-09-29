@@ -217,16 +217,11 @@ public class Message {
 
     }
 
-    //NOTE: test if really needed
-    public static class StartReadMsg implements Serializable {
-        private final int key;
+    public static class StartReadRequestMsg implements Serializable {
+        public final int key;
 
-        public StartReadMsg(int key){
+        public StartReadRequestMsg(int key) {
             this.key = key;
-        }
-
-        public int getKey() {
-            return this.key;
         }
     }
 
@@ -383,70 +378,9 @@ public class Message {
         }
     }
 
-    public static class CritReadResponseMsg implements Serializable {
-        private final int key;
-        private final int value;
-        private final Stack<ActorRef> path;
-        private final long requestId;
 
-        public CritReadResponseMsg(int key, int value, List<ActorRef> path, long requestId) {
-            this.key = key;
-            this.value = value;
-            //path should be unmodifiable, to follow the general akka rule
-            this.path = new Stack<>();
-            this.path.addAll(path);
-            this.requestId = requestId;
-        }
 
-        public int getKey() {
-            return key;
-        }
 
-        public int getValue() {
-            return value;
-        }
-
-        public long getRequestId() {
-            return requestId;
-        }
-
-        public Stack<ActorRef> getPath() {
-            return path;
-        }
-
-        //get last element of the path
-        public ActorRef getLast() {
-            if (path == null || path.isEmpty()) {
-                return null;
-            }
-            return path.peek();
-        }
-
-        //get path size
-        public int getPathSize() {
-            return path.size();
-        }
-
-        // Print the path
-        public String printPath() {
-            StringBuilder sb = new StringBuilder();
-            sb.append("Current path of message: [ ");
-            for (ActorRef actor : path) {
-                sb.append(actor.path().name()).append(" ");
-            }
-            sb.append(" ]");
-            return sb.toString();
-        }
-
-    }
-
-    public static class StartReadRequestMsg implements Serializable {
-        public final int key;
-
-        public StartReadRequestMsg(int key) {
-            this.key = key;
-        }
-    }
 
     public static class StartWriteMsg implements Serializable{ //TODO: change into private with getters
         public final int key;
@@ -534,8 +468,123 @@ public class Message {
 
 
 
+    // ----------CRITICAL READ MESSAGES----------
+    public static class StartCriticalReadRequestMsg implements Serializable {
+        private final int key;
 
+        public StartCriticalReadRequestMsg(int key){
+            this.key = key;
+        }
 
+        public int getKey() {
+            return this.key;
+        }
+    }
+
+    public static class CriticalReadRequestMsg implements Serializable {
+        private final int key;
+        private final Stack<ActorRef> path;
+        private final long requestId;
+
+        public CriticalReadRequestMsg(int key, Stack<ActorRef> path, long requestId) {
+            this.key = key;
+            //path should be unmodifiable, to follow the general akka rule
+            this.path = new Stack<>();
+            this.path.addAll(path);
+            this.requestId = requestId;
+        }
+
+        public long getRequestId() {
+            return requestId;
+        }
+
+        public int getKey() {
+            return key;
+        }
+
+        public Stack<ActorRef> getPath() {
+            return path;
+        }
+
+        //get last element of the path
+        public ActorRef getLast() {
+            return path.peek();
+        }
+
+        //get path size
+        public int getPathSize() {
+            return path.size();
+        }
+
+        // Print the path
+        public String printPath() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Current path of message: [ ");
+            for (ActorRef actor : path) {
+                sb.append(actor.path().name()).append(" ");
+            }
+            sb.append(" ]");
+            return sb.toString();
+        }
+
+    }
+
+    public static class CriticalReadResponseMsg implements Serializable {
+        private final int key;
+        private final int value;
+        private final Stack<ActorRef> path;
+        private final long requestId;
+
+        public CriticalReadResponseMsg(int key, int value, List<ActorRef> path, long requestId) {
+            this.key = key;
+            this.value = value;
+            //path should be unmodifiable, to follow the general akka rule
+            this.path = new Stack<>();
+            this.path.addAll(path);
+            this.requestId = requestId;
+        }
+
+        public int getKey() {
+            return key;
+        }
+
+        public int getValue() {
+            return value;
+        }
+
+        public long getRequestId() {
+            return requestId;
+        }
+
+        public Stack<ActorRef> getPath() {
+            return path;
+        }
+
+        //get last element of the path
+        public ActorRef getLast() {
+            if (path == null || path.isEmpty()) {
+                return null;
+            }
+            return path.peek();
+        }
+
+        //get path size
+        public int getPathSize() {
+            return path.size();
+        }
+
+        // Print the path
+        public String printPath() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Current path of message: [ ");
+            for (ActorRef actor : path) {
+                sb.append(actor.path().name()).append(" ");
+            }
+            sb.append(" ]");
+            return sb.toString();
+        }
+
+    }
 
 
 

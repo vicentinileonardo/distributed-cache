@@ -298,6 +298,23 @@ public class DistributedCacheSystem {
         client.tell(msg, ActorRef.noSender());
     }
 
+    private void sendCritReadMsgs(int clientId) {
+        ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
+
+        // generate a random number
+        Random rndm = new Random();
+
+        // this will generate a random number between 0 and
+        // HashSet.size - 1
+        int rndmNumber = rndm.nextInt(this.clientActors.size());
+        ActorRef client = tmpArray[rndmNumber];
+        //ActorRef client = tmpArray[clientId];
+        int rndmKey = rndm.nextInt(10);
+        int specificKey = 4;
+        StartCriticalReadRequestMsg msg = new StartCriticalReadRequestMsg(specificKey);
+        client.tell(msg, ActorRef.noSender());
+    }
+
 
     public static void main(String[] args) throws IOException, InterruptedException {
 
@@ -340,18 +357,15 @@ public class DistributedCacheSystem {
                 .bind(concat);
 
 
-        System.out.println("TESTTESTTEST");
+
         //distributedCacheSystem.sendReadMsgs(0);
         //sleep(1000);
-        distributedCacheSystem.sendWriteMsgs(1);
+        //distributedCacheSystem.sendWriteMsgs(1);
         //sleep(1000);
         //distributedCacheSystem.sendReadMsgs(2);
         //sleep(900000000);
+        distributedCacheSystem.sendCritReadMsgs(3);
 
-
-
-
-        //client read msg
 
 
 
