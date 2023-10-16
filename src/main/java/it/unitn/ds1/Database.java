@@ -30,6 +30,23 @@ public class Database extends AbstractActor {
     private Random rnd = new Random();
     private String classString = String.valueOf(getClass());
 
+    // critical write, if a critical write for a specific key is ongoing, no write for the same key is allowed
+    // key -> CriticalWriteRequestMsg
+    // we store the original critical write request message to be able to send the response back to the client
+    // recovering the path and the request identifier
+    private Map<Integer, CriticalWriteRequestMsg> ongoingCritWrites = new HashMap<>();
+
+    // map to store the caches involved in a critical write for a specific key
+    // assumption: a cache can be involved in a critical write for a specific key only once at a time
+    // TODO: check is this behaviour is already guaranteed
+    private Map<Integer, Set<ActorRef>> involvedCachesCritWrites = new HashMap<>();
+
+
+    private Map<Integer, Set<ActorRef>> childrenToAcceptWriteByKey = new HashMap<>();
+    private Map<Integer, Set<ActorRef>> childrenAcceptedWriteByKey = new HashMap<>();
+    private Map<Integer, Set<ActorRef>> childrenToConfirmWriteByKey = new HashMap<>();
+    private Map<Integer, Set<ActorRef>> childrenConfirmedWriteByKey = new HashMap<>();
+
     public Database(int id, List<TimeoutConfiguration> timeouts) {
         this.id = id;
         setTimeouts(timeouts);
@@ -161,6 +178,33 @@ public class Database extends AbstractActor {
         }
     }
 
+    private void sendProposedWrite(CriticalWriteRequestMsg criticalWriteRequestMsg, Set<ActorRef> caches) {
+
+        ProposedWriteMsg proposedWriteMsg = new ProposedWriteMsg(criticalWriteRequestMsg.getKey(), criticalWriteRequestMsg.getValue());
+
+        for (ActorRef cache : caches) {
+             cache.tell(proposedWriteMsg, getSelf());
+             log.info("[DATABASE " + id + "] Sent a proposed write message to cache " + cache.path().name());
+        }
+
+        // set a timeout
+    }
+
+    private void sendApplyWrite(AcceptedWriteMsg acceptedWriteMsg, Set<ActorRef> caches) {
+
+        log.info("[DATABASE " + id + "] Sending an apply write message to caches");
+
+        ApplyWriteMsg applyWriteMsg = new ApplyWriteMsg(acceptedWriteMsg.getKey(), acceptedWriteMsg.getValue());
+
+        for (ActorRef cache : caches) {
+            log.info("[DATABASE " + id + "] Sending an apply write message to cache " + cache.path().name());
+            cache.tell(applyWriteMsg, getSelf());
+            log.info("[DATABASE " + id + "] Sent an apply write message to cache " + cache.path().name());
+        }
+
+        // set a timeout
+    }
+
     // ----------RECEIVE LOGIC----------
     // Here we define the mapping between the received message types and the database methods
     @Override
@@ -169,9 +213,15 @@ public class Database extends AbstractActor {
                 .match(Message.InitMsg.class, this::onInitMsg)
                 .match(CurrentDataMsg.class, this::onCurrentDataMsg)
                 .match(DropDatabaseMsg.class, this::onDropDatabaseMsg)
+
                 .match(ReadRequestMsg.class, this::onReadRequestMsg)
                 .match(WriteRequestMsg.class, this::onWriteRequestMsg)
                 .match(CriticalReadRequestMsg.class, this::onCriticalReadRequestMsg)
+                .match(CriticalWriteRequestMsg.class, this::onCriticalWriteRequestMsg)
+
+                .match(AcceptedWriteMsg.class, this::onAcceptedWriteMsg)
+                .match(ConfirmedWriteMsg.class, this::onConfirmedWriteMsg)
+
                 .match(RequestConnectionMsg.class, this::onRequestConnectionMsg)
                 .match(RequestUpdatedDataMsg.class, this::onRequestUpdatedDataMsg)
                 .matchAny(o -> System.out.println("Database received unknown message from " + getSender()))
@@ -296,6 +346,135 @@ public class Database extends AbstractActor {
             log.info("[DATABASE " + id + "] Read value " + value + " for key " + criticalReadRequestMsg.getKey() + " and sent it to cache " + child.path().name());
 
         }
+    }
+
+    public void onCriticalWriteRequestMsg(CriticalWriteRequestMsg criticalWriteRequestMsg) {
+        log.info("[DATABASE " + id + "] Received a critical write request for key " + criticalWriteRequestMsg.getKey() + " with value " + criticalWriteRequestMsg.getKey());
+
+        // check if the key is already present in ongoingCritWrites
+        if (ongoingCritWrites.containsKey(criticalWriteRequestMsg.getKey())) {
+            // the critical write will not be accepted
+            log.info("[DATABASE " + id + "] Critical write for key " + criticalWriteRequestMsg.getKey() + " with value " + criticalWriteRequestMsg.getValue() + " will not be accepted");
+
+            // send write response with value isRefused = true
+            CriticalWriteResponseMsg criticalWriteResponseMsg = new CriticalWriteResponseMsg(criticalWriteRequestMsg.getKey(), criticalWriteRequestMsg.getValue(), criticalWriteRequestMsg.getPath(), criticalWriteRequestMsg.getRequestId(), true);
+            getSender().tell(criticalWriteResponseMsg, getSelf());
+            log.info("[DATABASE " + id + "] Sending write response to cache " + getSender().path().name());
+
+        }
+
+        ongoingCritWrites.put(criticalWriteRequestMsg.getKey(), criticalWriteRequestMsg);
+
+        // send proposed write to all connected caches
+
+        //print caches
+        for (ActorRef cache : L1_caches) {
+            log.info("[DATABASE " + id + "] L1 cache, onCriticalWriteRequestMsg: " + cache.path().name());
+        }
+
+        sendProposedWrite(criticalWriteRequestMsg, L1_caches);
+        childrenToAcceptWriteByKey.put(criticalWriteRequestMsg.getKey(), L1_caches);
+        log.info("[DATABASE " + id + "] Sending proposed write to L1 caches");
+
+        // send also to all L2 caches that are connected directly with the db (due to previous crashes)
+        if (!L2_caches.isEmpty()) {
+            sendProposedWrite(criticalWriteRequestMsg, L2_caches);
+
+            Set<ActorRef> newSet = childrenToAcceptWriteByKey.get(criticalWriteRequestMsg.getKey());
+            newSet.addAll(L2_caches);
+            childrenToAcceptWriteByKey.put(criticalWriteRequestMsg.getKey(), newSet);
+
+            log.info("[DATABASE " + id + "] Sending write responses ALSO to L2 caches");
+        } else {
+            log.info("[DATABASE " + id + "] No L2 caches connected directly with the database");
+        }
+
+    }
+
+    public void onAcceptedWriteMsg(AcceptedWriteMsg acceptedWriteMsg) {
+        log.info("[DATABASE " + id + "] Received accepted write msg; key:{}, value:{} from {}", acceptedWriteMsg.getKey(), acceptedWriteMsg.getValue(), getSender().path().name());
+
+        System.out.println("[database] before removal , childrenToAcceptWriteByKey: " + childrenToAcceptWriteByKey.toString());
+        // remove from the set of caches that must respond to this cache
+        childrenToAcceptWriteByKey.get(acceptedWriteMsg.getKey()).remove(getSender());
+
+        System.out.println("[database] after removal, childrenToAcceptWriteByKey: " + childrenToAcceptWriteByKey.toString());
+
+        childrenAcceptedWriteByKey.putIfAbsent(acceptedWriteMsg.getKey(), new HashSet<ActorRef>());
+        childrenAcceptedWriteByKey.get(acceptedWriteMsg.getKey()).add(getSender());
+
+        // check every time if all caches have responded for that specific key
+        if (childrenToAcceptWriteByKey.get(acceptedWriteMsg.getKey()).isEmpty()) {
+            log.info("[DATABASE " + id + "] All caches have responded (accepted write) for key: {}", acceptedWriteMsg.getKey());
+
+            // here is a good place to add data to the database
+            data.put(acceptedWriteMsg.getKey(), acceptedWriteMsg.getValue());
+            log.info("[DATABASE " + id + "] Added data to database: key:{}, value:{}", acceptedWriteMsg.getKey(), acceptedWriteMsg.getValue());
+
+            // send an apply write to all connected caches
+
+            //print caches
+            for (ActorRef cache : L1_caches) {
+                log.info("[DATABASE " + id + "] L1 cache, onAcceptedWriteMsg: " + cache.path().name());
+            }
+
+            sendApplyWrite(acceptedWriteMsg, L1_caches);
+            childrenToConfirmWriteByKey.put(acceptedWriteMsg.getKey(), L1_caches);
+            log.info("[DATABASE " + id + "] Sending apply write to L1 caches");
+
+            // send also to all L2 caches that are connected directly with the db (due to previous crashes)
+            if (!L2_caches.isEmpty()) {
+                sendApplyWrite(acceptedWriteMsg, L2_caches);
+
+                Set<ActorRef> newSet = childrenToConfirmWriteByKey.get(acceptedWriteMsg.getKey());
+                newSet.addAll(L2_caches);
+                childrenToConfirmWriteByKey.put(acceptedWriteMsg.getKey(), newSet);
+
+                log.info("[DATABASE " + id + "] Sending apply write ALSO to L2 caches");
+            } else {
+                log.info("[DATABASE " + id + "] No L2 caches connected directly with the database to send apply write");
+            }
+
+        }
+
+    }
+
+    public void onConfirmedWriteMsg(ConfirmedWriteMsg confirmedWriteMsg) {
+        log.info("[DATABASE " + id + "] Received confirmed write msg; key:{}, value:{} from {}", confirmedWriteMsg.getKey(), confirmedWriteMsg.getValue(), getSender().path().name());
+
+        System.out.println("[database] before removal , childrenToConfirmWriteByKey: " + childrenToConfirmWriteByKey.toString());
+        // remove from the set of caches that must respond to this cache
+        childrenToConfirmWriteByKey.get(confirmedWriteMsg.getKey()).remove(getSender());
+
+        System.out.println("[database] after removal, childrenToConfirmWriteByKey: " + childrenToConfirmWriteByKey.toString());
+
+        childrenConfirmedWriteByKey.putIfAbsent(confirmedWriteMsg.getKey(), new HashSet<ActorRef>());
+        childrenConfirmedWriteByKey.get(confirmedWriteMsg.getKey()).add(getSender());
+
+        involvedCachesCritWrites.put(confirmedWriteMsg.getKey(), childrenConfirmedWriteByKey.get(confirmedWriteMsg.getKey()));
+
+        // check every time if all caches have responded for that specific key
+        if (childrenToConfirmWriteByKey.get(confirmedWriteMsg.getKey()).isEmpty()) {
+            log.info("[DATABASE " + id + "] All caches have responded (confirmed write) for key: {}", confirmedWriteMsg.getKey());
+
+            // get the value of the key from ongoingCritWrites
+            CriticalWriteRequestMsg criticalWriteRequestMsg = ongoingCritWrites.get(confirmedWriteMsg.getKey());
+
+            // remove the key from ongoingCritWrites
+            ongoingCritWrites.remove(confirmedWriteMsg.getKey());
+
+            // print ongoingCritWrites
+            System.out.println("[database] ongoingCritWrites, after removal: " + ongoingCritWrites.toString());
+
+            Set<ActorRef> involvedCaches = involvedCachesCritWrites.remove(confirmedWriteMsg.getKey());
+
+            CriticalWriteResponseMsg criticalWriteResponseMsg = new CriticalWriteResponseMsg(confirmedWriteMsg.getKey(), confirmedWriteMsg.getValue(), criticalWriteRequestMsg.getPath(), criticalWriteRequestMsg.getRequestId(), false);
+            criticalWriteResponseMsg.setUpdatedCaches(involvedCaches);
+            getSender().tell(criticalWriteResponseMsg, getSelf());
+            log.info("[DATABASE " + id + "] Sending write response to cache " + getSender().path().name());
+
+        }
+
     }
 
     public void onRequestUpdatedDataMsg(RequestUpdatedDataMsg msg){

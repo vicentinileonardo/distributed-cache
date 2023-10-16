@@ -12,7 +12,7 @@ clients:
     - type: !!str write
       value: !!int 100
     - type: !!str crit_write
-      value: !!int 10
+      value: !!int 100
     - type: !!str connection
       value: !!int 10
 l2Caches:
@@ -26,7 +26,7 @@ l2Caches:
     - type: !!str write
       value: !!int 10
     - type: !!str crit_write
-      value: !!int 10
+      value: !!int 50
 l1Caches:
   maxNum: !!int 10
   customNum: !!int 3
@@ -38,7 +38,7 @@ l1Caches:
     - type: !!str write
       value: !!int 10
     - type: !!str crit_write
-      value: !!int 10
+      value: !!int 50
 database:
   timeouts:
     - type: !!str refill
