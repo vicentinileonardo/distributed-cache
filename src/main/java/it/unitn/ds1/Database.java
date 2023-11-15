@@ -132,7 +132,7 @@ public class Database extends AbstractActor {
 
         //CustomPrint.print(classString,"",  "", "Initial data in database " + id + ":");
         log.info("[DATABASE " + id + "] Initial data in database " + id + ":");
-        for (Map.Entry<Integer, Integer> entry : data.entrySet()) {
+        for (Map.Entry<Integer, Integer> entry : getData().entrySet()) {
             //CustomPrint.print(classString,"",  "", "Key = " + entry.getKey() + ", Value = " + entry.getValue());
             log.info("[DATABASE " + id + "] Key = " + entry.getKey() + ", Value = " + entry.getValue());
         }
@@ -140,18 +140,30 @@ public class Database extends AbstractActor {
 
     public void populateDatabase() {
         for (int i = 0; i < 10; i++) {
-            data.put(i, rnd.nextInt(200));
+            putData(i, rnd.nextInt(200));
         }
         //CustomPrint.debugPrint(classString, "Database " + id + " populated");
         log.info("[DATABASE " + id + "] Populated");
     }
 
     public boolean isDataPresent(int key){
-        return data.containsKey(key);
+        return getData().containsKey(key);
     }
 
     public int getData(int key){
-        return data.get(key);
+        return this.data.get(key);
+    }
+
+    public void putData(int key, int value){
+        this.data.put(key, value);
+    }
+
+    public void clearData(){
+        this.data.clear();
+    }
+
+    public Map<Integer, Integer> getData() {
+        return this.data;
     }
 
     // ----------SENDING LOGIC----------
@@ -213,6 +225,7 @@ public class Database extends AbstractActor {
                 .match(Message.InitMsg.class, this::onInitMsg)
                 .match(CurrentDataMsg.class, this::onCurrentDataMsg)
                 .match(DropDatabaseMsg.class, this::onDropDatabaseMsg)
+                .match(HealthCheckRequestMsg.class, this::onHealthCheckRequest)
 
                 .match(ReadRequestMsg.class, this::onReadRequestMsg)
                 .match(WriteRequestMsg.class, this::onWriteRequestMsg)
@@ -302,7 +315,7 @@ public class Database extends AbstractActor {
     public void onWriteRequestMsg(WriteRequestMsg msg) {
         log.info("[DATABASE " + id + "] Received a write request for key " + msg.key + " with value " + msg.value);
 
-        data.put(msg.getKey(), msg.getValue());
+        putData(msg.getKey(), msg.getValue());
         log.info("[DATABASE " + id + "] Wrote key " + msg.key + " with value " + msg.value);
 
         // notify all L1 caches
@@ -408,7 +421,7 @@ public class Database extends AbstractActor {
             log.info("[DATABASE " + id + "] All caches have responded (accepted write) for key: {}", acceptedWriteMsg.getKey());
 
             // here is a good place to add data to the database
-            data.put(acceptedWriteMsg.getKey(), acceptedWriteMsg.getValue());
+            putData(acceptedWriteMsg.getKey(), acceptedWriteMsg.getValue());
             log.info("[DATABASE " + id + "] Added data to database: key:{}, value:{}", acceptedWriteMsg.getKey(), acceptedWriteMsg.getValue());
 
             // send an apply write to all connected caches
@@ -482,7 +495,7 @@ public class Database extends AbstractActor {
 
         // get the values for the keys in the message
         for (Integer key : msg.getKeys()){
-            tmpData.put(key, this.data.get(key));
+            tmpData.put(key, getData(key));
         }
 
         getSender().tell(new ResponseUpdatedDataMsg(tmpData), getSelf());
@@ -493,7 +506,7 @@ public class Database extends AbstractActor {
     public void onCurrentDataMsg(CurrentDataMsg msg) {
         //CustomPrint.debugPrint(classString, "Current data in database " + id + ":");
         log.info("[DATABASE " + id + "] Current data in database " + id + ":");
-        for (Map.Entry<Integer, Integer> entry : data.entrySet()) {
+        for (Map.Entry<Integer, Integer> entry : getData().entrySet()) {
             //CustomPrint.debugPrint(classString, "Key = " + entry.getKey() + ", Value = " + entry.getValue());
             log.info("[DATABASE " + id + "] Key = " + entry.getKey() + ", Value = " + entry.getValue());
         }
@@ -503,8 +516,13 @@ public class Database extends AbstractActor {
     public void onDropDatabaseMsg(DropDatabaseMsg msg) {
         //CustomPrint.debugPrint(classString, "Database drop request");
         log.info("[DATABASE " + id + "] Database drop request");
-        data.clear();
+        clearData();
         //CustomPrint.debugPrint(classString, "Database " + id + " dropped");
         log.info("[DATABASE " + id + "] Database dropped");
+    }
+
+    public void onHealthCheckRequest(HealthCheckRequestMsg msg) {
+        HealthCheckResponseMsg new_msg = new HealthCheckResponseMsg(getData());
+        getSender().tell(new_msg, getSelf());
     }
 }

@@ -36,23 +36,25 @@ public class DistributedCacheSystem {
 
     //getter for database actor
     public ActorRef getDatabase() {
-        return databaseActor;
+        return this.databaseActor;
     }
 
     //getter for l2 cache actors
     public HashSet<ActorRef> getL2Caches() {
-        return l2CacheActors;
+        return this.l2CacheActors;
     }
 
     //getter for l1 cache actors
     public HashSet<ActorRef> getL1Caches() {
-        return l1CacheActors;
+        return this.l1CacheActors;
     }
 
     //getter for client actors
     public HashSet<ActorRef> getClients() {
-        return clientActors;
+        return this.clientActors;
     }
+
+    public ActorRef getMaster() { return this.master; }
 
     public void parse() throws IOException {
         String configFilePath = System.getProperty("user.dir") + "/"+ this.config_file;
@@ -149,11 +151,13 @@ public class DistributedCacheSystem {
             }
             totalClients += clientNum;
         }
+
+
+        this.master = system.actorOf(Master.props(databaseActor, l1CacheActors, l2CacheActors));
         System.out.println("Total clients: " + totalClients);
         System.out.println("Total clients num: " + totalClientsNum);
         System.out.println("Client " + (totalClients == totalClientsNum) );
 
-        this.master = system.actorOf(Master.props(this.l1CacheActors, this.l2CacheActors, this.clientActors), "master");
     }
 
     public void buildAutoSystem(){
@@ -229,7 +233,9 @@ public class DistributedCacheSystem {
             }
             total_clients += client_num;
         }
-        this.master = system.actorOf(Master.props(this.l1CacheActors, this.l2CacheActors, this.clientActors), "master");
+
+
+        this.master = system.actorOf(Master.props(databaseActor, l1CacheActors, l2CacheActors));
     }
 
     public void buildSystem(){
@@ -335,6 +341,20 @@ public class DistributedCacheSystem {
         client.tell(msg, ActorRef.noSender());
     }
 
+    private void consistencyCheck() {
+        // Flag consistency == True
+        // Send request to DB for all data
+        // Receive response from DB and save all data
+        // Send request to all caches and save them in a list
+        // For each cache's response check data
+        //      If data is correct -> delete cache name from list
+        //      If data is not correct -> print error cache + delete cache name from list + flag consistency == False
+        // If list empty and flag correct == True -> system consistent
+        // If flag false -> system inconsistent
+        StartHealthCheck msg = new StartHealthCheck();
+        master.tell(msg, ActorRef.noSender());
+    }
+
 
     public static void main(String[] args) throws IOException, InterruptedException {
 
@@ -360,6 +380,7 @@ public class DistributedCacheSystem {
         Route stateL1caches = new HTTPRoutes().stateL1caches(distributedCacheSystem);
         Route stateL2caches = new HTTPRoutes().stateL2caches(distributedCacheSystem);
         Route stateDB = new HTTPRoutes().stateDB(distributedCacheSystem);
+        Route consistencyCheck = new HTTPRoutes().consistencyCheck(distributedCacheSystem);
 
         Route concat = concat(getClients,
                 getL1Caches,
@@ -370,7 +391,8 @@ public class DistributedCacheSystem {
                 recoverL2Caches,
                 stateL1caches,
                 stateL2caches,
-                stateDB);
+                stateDB,
+                consistencyCheck);
 
         Http.get(distributedCacheSystem.system)
                 .newServerAt("localhost", 3003)

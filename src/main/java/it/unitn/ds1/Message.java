@@ -63,6 +63,26 @@ public class Message {
         public InfoMsg() {}
     }
 
+    public static class StartHealthCheck implements Serializable{
+        public StartHealthCheck() {}
+    }
+
+    public static class HealthCheckRequestMsg implements Serializable{
+        public HealthCheckRequestMsg() {}
+    }
+
+    public static class HealthCheckResponseMsg implements Serializable{
+        private final Map<Integer, Integer> data;
+        public HealthCheckResponseMsg(Map<Integer, Integer> data){
+            this.data = data;
+        }
+
+        public Map<Integer, Integer> getData() {
+            return this.data;
+        }
+
+    }
+
     // ----------CRASH RELATED MESSAGES----------
     public static class CrashMsg implements Serializable{
         public CrashMsg() {}

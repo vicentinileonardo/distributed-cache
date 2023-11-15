@@ -4,64 +4,78 @@ import akka.actor.AbstractActor;
 import akka.actor.ActorRef;
 import akka.actor.Props;
 
+import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
+import java.util.Map;
 
 public class Master extends AbstractActor {
 
-    private HashSet<ActorRef> l1CacheActors;
-    private HashSet<ActorRef> l2CacheActors;
-    private HashSet<ActorRef> clientActors;
+	ActorRef database;
+	HashSet<ActorRef> l1Caches;
+	HashSet<ActorRef> l2Caches;
 
-    public Master(HashSet<ActorRef> l1CacheActors,
-                  HashSet<ActorRef> l2CacheActors,
-                  HashSet<ActorRef> clientActors) {
-        setL1CacheActors(l1CacheActors);
-        setL2CacheActors(l2CacheActors);
-        setClientActors(clientActors);
-        System.out.println("Master initialized");
-    }
+	HashMap<Integer, Integer> data;
 
-    static public Props props(HashSet<ActorRef> l1CacheActors,
-                              HashSet<ActorRef> l2CacheActors,
-                              HashSet<ActorRef> clientActors) {
-        return Props.create(Master.class, () -> new Master(l1CacheActors, l2CacheActors, clientActors));
-    }
+	HashSet<ActorRef> requestsSent;
 
-    // ----------SYSTEM SETUP----------
+	boolean isConsistent = true;
 
-    public HashSet<ActorRef> getL1CacheActors() {
-        return l1CacheActors;
-    }
+	public Master(ActorRef db, HashSet<ActorRef> l1, HashSet<ActorRef> l2) {
+		this.database = db;
+		this.l1Caches = new HashSet<ActorRef>();
+		this.l1Caches.addAll(l1);
+		this.l2Caches = new HashSet<ActorRef>();
+		this.l2Caches.addAll(l2);
+	}
 
-    public void setL1CacheActors(HashSet<ActorRef> l1CacheActors) {
-        this.l1CacheActors = l1CacheActors;
-    }
+	static public Props props(ActorRef db, HashSet<ActorRef> l1, HashSet<ActorRef> l2) {
+		return Props.create(Master.class, new Master(db, l1, l2));
+	}
 
-    public HashSet<ActorRef> getL2CacheActors() {
-        return l2CacheActors;
-    }
+	@Override
+	public Receive createReceive() {
+		return receiveBuilder()
+				.match(Message.StartHealthCheck.class, this::onStartHealthCheck)
+				.match(Message.HealthCheckResponseMsg.class, this::onHealthCheckResponse)
+				.matchAny(o -> System.out.println("Master received unknown message from " + getSender()))
+				.build();
+	}
 
-    public void setL2CacheActors(HashSet<ActorRef> l2CacheActors) {
-        this.l2CacheActors = l2CacheActors;
-    }
+	private void onStartHealthCheck(Message.StartHealthCheck msg){
+		Message.HealthCheckRequestMsg new_msg = new Message.HealthCheckRequestMsg();
+		this.database.tell(new_msg, getSelf());
+	}
 
-    public HashSet<ActorRef> getClientActors() {
-        return clientActors;
-    }
+	private void onHealthCheckResponse(Message.HealthCheckResponseMsg msg){
+		if (getSender() == database){
+			this.data.putAll(msg.getData());
 
-    public void setClientActors(HashSet<ActorRef> clientActors) {
-        this.clientActors = clientActors;
-    }
+			Message.HealthCheckRequestMsg new_msg = new Message.HealthCheckRequestMsg();
+			for (ActorRef cache : l1Caches) {
+				cache.tell(new_msg, self());
+				this.requestsSent.add(cache);
+			}
 
-    @Override
-    public void preStart() {
-    }
-    @Override
-    public Receive createReceive() {
-        return receiveBuilder()
-                .matchAny(o -> System.out.println("Master received unknown message from " + getSender()))
-                .build();
-    }
+			for (ActorRef cache : l2Caches) {
+				cache.tell(new_msg, self());
+				this.requestsSent.add(cache);
+			}
+
+		} else {
+			for (Map.Entry<Integer, Integer> entry : msg.getData().entrySet()) {
+				if (entry.getValue() != this.data.get(entry.getKey())) {
+					this.isConsistent = false;
+					System.out.println("Actor "+getSender().toString()+" is inconsistent!");
+					break;
+				}
+			}
+
+			this.requestsSent.remove(getSender());
+		}
+
+		if (this.requestsSent.isEmpty()) {
+			System.out.println("Is the system consistent? "+ this.isConsistent);
+		}
+	}
+
 }
-

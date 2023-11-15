@@ -451,6 +451,7 @@ public class Cache extends AbstractActor{
                 .match(StartInitMsg.class, this::onStartInitMsg)
                 .match(InitMsg.class, this::onInitMsg)
                 .match(DummyMsg.class, this::onDummyMsg)
+                .match(HealthCheckRequestMsg.class, this::onHealthCheckRequest)
 
                 .match(ReadRequestMsg.class, this::onReadRequestMsg)
                 .match(ReadResponseMsg.class, this::onReadResponseMsg)
@@ -1313,6 +1314,11 @@ public class Cache extends AbstractActor{
             // edge case, not possible in the current implementation
             log.info("[{} CACHE {}] Connection refused", getCacheType().toString(), String.valueOf(getID()));
         }
+    }
+
+    public void onHealthCheckRequest(HealthCheckRequestMsg msg) {
+        HealthCheckResponseMsg new_msg = new HealthCheckResponseMsg(getData());
+        getSender().tell(new_msg, getSelf());
     }
 
 }

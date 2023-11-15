@@ -290,6 +290,25 @@ public class HTTPRoutes extends AllDirectives {
         );
     }
 
+    public Route consistencyCheck(DistributedCacheSystem system) {
+        return path("healthCheck", () ->
+                get(() -> {
+                    CustomPrint.print(classString, "", "", "Starting consistency check" );
+
+                    //find the l2 cache with the given id
+                    ActorRef master = system.getMaster();
+
+                    master.tell(new StartHealthCheck(), ActorRef.noSender());
+
+                    ObjectNode message = JsonNodeFactory.instance.objectNode();
+                    String value = "Consistency check requested";
+                    CustomPrint.print(classString, "", "", value);
+                    message.put("message", value);
+                    return completeOK(message, Jackson.marshaller());
+                })
+        );
+    }
+
 
 }
 
