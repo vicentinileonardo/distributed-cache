@@ -1075,7 +1075,7 @@ public class Cache extends AbstractActor{
             tmpWriteData.remove(applyWriteMsg.getKey());
             log.info("[{} CACHE {}] Key removed from temporary write structure", getCacheType().toString(), String.valueOf(getID()));
         } else {
-            log.info("[{} CACHE {}] Something went wrong, key not present in temporary write structure", getCacheType().toString(), String.valueOf(getID()));
+            log.info("[{} CACHE {}] Something went wrong, key not present in temporary write structure while it must be there", getCacheType().toString(), String.valueOf(getID()));
         }
 
         // if the cache is of type L1
