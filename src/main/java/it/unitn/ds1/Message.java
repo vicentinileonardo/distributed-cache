@@ -59,6 +59,27 @@ public class Message {
 
     }
 
+    public static class DbTimeoutMsg implements Serializable{
+
+        private String type;
+
+        private final long requestId;
+
+        public DbTimeoutMsg(String type, long requestId) {
+            this.type = type;
+            this.requestId = requestId;
+        }
+
+        public String getType() {
+            return this.type;
+        }
+
+        public long getRequestId() {
+            return this.requestId;
+        }
+
+    }
+
     public static class InfoMsg implements Serializable{
         public InfoMsg() {}
     }
@@ -674,6 +695,17 @@ public class Message {
             }
             sb.append(" ]");
             return sb.toString();
+        }
+
+        //toString
+        @Override
+        public String toString() {
+            return "CriticalWriteRequestMsg{" +
+                    "key=" + key +
+                    ", value=" + value +
+                    ", path=" + path +
+                    ", requestId=" + requestId +
+                    '}';
         }
     }
 

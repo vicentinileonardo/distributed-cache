@@ -68,10 +68,12 @@ public class Master extends AbstractActor {
 		this.l1Caches.addAll(l1);
 		this.l2Caches = new HashSet<ActorRef>();
 		this.l2Caches.addAll(l2);
+		this.data = new HashMap<Integer, Integer>();
+		this.requestsSent = new HashSet<ActorRef>();
 	}
 
 	static public Props props(ActorRef db, HashSet<ActorRef> l1, HashSet<ActorRef> l2) {
-		return Props.create(Master.class, new Master(db, l1, l2));
+		return Props.create(Master.class, () -> new Master(db, l1, l2));
 	}
 
 	@Override

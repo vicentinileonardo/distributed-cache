@@ -400,15 +400,15 @@ public class DistributedCacheSystem {
 
 
 
-        distributedCacheSystem.sendReadMsgs(0);
-        sleep(1000);
+        //distributedCacheSystem.sendReadMsgs(0);
+        //sleep(1000);
         //distributedCacheSystem.sendWriteMsgs(1);
         //sleep(1000);
         //distributedCacheSystem.sendReadMsgs(2);
         //sleep(900000000);
         //distributedCacheSystem.sendCritReadMsgs(3);
 
-        //distributedCacheSystem.sendCritWriteMsgs(3);
+        distributedCacheSystem.sendCritWriteMsgs(3);
 
 
 

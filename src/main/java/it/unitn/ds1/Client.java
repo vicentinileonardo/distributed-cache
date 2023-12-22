@@ -498,6 +498,7 @@ public class Client extends AbstractActor {
 
             //System.out.println("inside first if");
             //check if operation is finished in the meantime
+            System.out.println("operations size: " + operations.size());
             if (operations.size() > 0 && operations.get(operations.size() - 1).isFinished()) {
                 log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " already finished");
                 log.info("[CLIENT " + id + "] Ignoring timeout msg");
@@ -636,7 +637,7 @@ public class Client extends AbstractActor {
 
     private void onStartCriticalWriteRequestMsg(StartCriticalWriteRequestMsg msg){
         log.info("[CLIENT " + id + "] Received critical write msg request!");
-        int delayInSeconds = 2;
+        int delayInSeconds = 10;
         sendCriticalWriteRequestMsg(msg.getKey(), msg.getValue(), delayInSeconds);
     }
 

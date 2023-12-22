@@ -6,13 +6,13 @@ clients:
   customNum: !!int 1
   timeouts:
     - type: !!str read
-      value: !!int 100
+      value: !!int 500
     - type: !!str crit_read
-      value: !!int 10
+      value: !!int 500
     - type: !!str write
-      value: !!int 100
+      value: !!int 500
     - type: !!str crit_write
-      value: !!int 100
+      value: !!int 15000
     - type: !!str connection
       value: !!int 10
 l2Caches:
@@ -26,7 +26,9 @@ l2Caches:
     - type: !!str write
       value: !!int 10
     - type: !!str crit_write
-      value: !!int 50
+      value: !!int 15
+    - type: !!str apply_write
+      value: !!int 15
 l1Caches:
   maxNum: !!int 10
   customNum: !!int 3
@@ -38,8 +40,16 @@ l1Caches:
     - type: !!str write
       value: !!int 10
     - type: !!str crit_write
-      value: !!int 50
+      value: !!int 15
+    - type: !!str apply_write
+      value: !!int 15
+    - type: !!str accepted_write
+      value: !!int 15
 database:
   timeouts:
     - type: !!str refill
       value: !!int 10
+    - type: !!str accepted_write
+      value: !!int 735
+    - type: !!str confirmed_write
+      value: !!int 735

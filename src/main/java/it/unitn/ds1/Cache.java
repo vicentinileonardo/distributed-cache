@@ -376,6 +376,8 @@ public class Cache extends AbstractActor{
     //TODO: think if we need timeouts also here. db never crash so it could be useless
     public void retryRequests(){
 
+        // for now, this function is called only by L2 caches
+
         System.out.println("inside retryRequests");
         for (Request request : this.requests.values()) {
             System.out.println("request: " + request);
@@ -406,7 +408,13 @@ public class Cache extends AbstractActor{
                     getParent().tell(new CriticalReadRequestMsg(request.getKey(), path, request.getRequestId()), getSelf());
                     log.info("[{} CACHE {}] Forwarded critical read request to {}", this.type_of_cache.toString(), String.valueOf(this.id), getParent().path().name());
                 } else if (request.getType().equals("crit_write")) {
-                    //TODO: think about what is the state on l1 caches and database rergarding the crit write
+                    //TODO: think about what is the state on l1 caches and database regarding the crit write
+
+                    System.out.println("inside retry request, crit write if");
+
+                    // if the db has already been asked the same request from the crashed L1 cache
+                    // it will deal by itself with the following message and send a CriticalWriteResponseMsg with isRefused = true
+                    // otherwise, it will start the procedure of critical write
 
                     getParent().tell(new CriticalWriteRequestMsg(request.getKey(), request.getValue(), path, request.getRequestId()), getSelf());
                     log.info("[{} CACHE {}] Forwarded critical write request to {}", this.type_of_cache.toString(), String.valueOf(this.id), getParent().path().name());
@@ -568,6 +576,7 @@ public class Cache extends AbstractActor{
                     log.info("[{} CACHE {}] Sent timeout elapsed msg to {}", getCacheType().toString(), String.valueOf(getID()), client.path().name());
                 }
                 break;
+            case "apply_write":
 
             default:
                 log.info("[{} CACHE {}] Received timeout msg for unknown operation", getCacheType().toString(), String.valueOf(getID()));
@@ -595,6 +604,10 @@ public class Cache extends AbstractActor{
     public void onReadRequestMsg(ReadRequestMsg readRequestMsg){
 
         log.info("[{} CACHE {}] Received read request msg from {}, asking for key {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name(), readRequestMsg.getKey());
+
+        int delay = 30;
+        addDelayInSeconds(delay);
+        log.info("[{} CACHE {}] Added delay of {} seconds", getCacheType().toString(), String.valueOf(getID()), delay);
 
         // check size of path
         // 1 means that the request is coming from a client -> LL: [Client]
@@ -642,10 +655,6 @@ public class Cache extends AbstractActor{
             //send read request to parent (L1 cache or database)
 
             log.info("[{} CACHE {}] Data is not present in cache; key:{}", getCacheType().toString(), String.valueOf(getID()), readRequestMsg.getKey());
-
-            int delay = 1;
-            addDelayInSeconds(delay);
-            log.info("[{} CACHE {}] Added delay of {} seconds", getCacheType().toString(), String.valueOf(getID()), delay);
 
             //adding cache to path
             Stack<ActorRef> newPath = new Stack<>();
@@ -946,10 +955,10 @@ public class Cache extends AbstractActor{
 
     public void onCriticalWriteResponseMsg(CriticalWriteResponseMsg criticalWriteResponseMsg){
 
-        // here we do not need to add the data to the cache, since data has been added with the "ApplyCriticalWrite" msg
-        // we just need to send the response along the correct path
+        log.info("[{} CACHE {}] Received critical write response msg; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), criticalWriteResponseMsg.getKey(), criticalWriteResponseMsg.getValue());
 
-        //check size of path:
+
+        // check size of path:
         // 2 means that the response is for a client -> LL:[Client, L2_Cache]
         // 3 means that the response is for a l2 cache -> LL:[Client, L2_Cache, L1_Cache]
         // other values are not allowed
@@ -966,20 +975,29 @@ public class Cache extends AbstractActor{
         //remove last element from path, which is the current cache
         newPath.pop();
 
+        log.info("[{} CACHE {}] after pop, NEW PATH: {}", getCacheType().toString(), String.valueOf(getID()), newPath.toString());
+
         //child can be a client or a l2 cache
         ActorRef child = newPath.get(newPath.size()-1); //get (not remove) last element from path
 
-        log.info("[{} CACHE {}] Received critical write response msg; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), criticalWriteResponseMsg.getKey(), criticalWriteResponseMsg.getValue());
 
         // check if child is between the children of this cache
         // something that should never happen
+
+        log.info("[{} CACHE {}] Children: {}", getCacheType().toString(), String.valueOf(getID()), getChildren().toString());
+        log.info("[{} CACHE {}] Child: {}", getCacheType().toString(), String.valueOf(getID()), child.toString());
+
         if (!getChildren().contains(child)) {
             log.info("[{} CACHE {}] Child not present in children list!", getCacheType().toString(), String.valueOf(getID()));
         }
 
+        // get updated caches from response
+        Set<ActorRef> updatedCaches = criticalWriteResponseMsg.getUpdatedCaches();
+
         //send response to child
         //either client or l2 cache
         CriticalWriteResponseMsg response = new CriticalWriteResponseMsg(criticalWriteResponseMsg.getKey(), criticalWriteResponseMsg.getValue(), newPath, criticalWriteResponseMsg.getRequestId(), criticalWriteResponseMsg.isRefused());
+        response.setUpdatedCaches(updatedCaches);
         child.tell(response, getSelf());
         log.info("[{} CACHE {}] Sent critical write response msg to {}", getCacheType().toString(), String.valueOf(getID()), child.path().name());
 
@@ -999,7 +1017,6 @@ public class Cache extends AbstractActor{
             // should never happen
             // if the db has started a critical write for the same key,
             // it refuse the critical write (or retry at the end of the entire operation maybe)
-            // TODO
         } else {
             // if no, then store the proposed value in a temporary structure
             tmpWriteData.put(proposedWriteMsg.getKey(), proposedWriteMsg.getValue());
@@ -1021,7 +1038,8 @@ public class Cache extends AbstractActor{
             childrenToAcceptWriteByKey.put(proposedWriteMsg.getKey(), childrenToAcceptWrite);
 
             // a l1 cache must wait for all the acceptedWrite from its children
-            // start a specific timeout, one for each child maybe
+            // start a specific timeout, waiting for accepted_write (one for each child maybe, future improvement)
+            //startTimeout("accepted_write", );
         }
 
         // if l2 cache
@@ -1033,8 +1051,12 @@ public class Cache extends AbstractActor{
             getSender().tell(acceptedWriteMsg, getSelf());
             log.info("[{} CACHE {}] Sent accepted write msg to {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
 
-            // start a specific timeout, waiting for the apply write msg
+
             // this l2 cache could be connected either to a l1 cache or to the database
+            // if it is connected to db, it will never timeout
+            // start a specific timeout, waiting for the apply write msg
+            //startTimeout("apply_write", );
+
         }
 
     }
@@ -1043,11 +1065,11 @@ public class Cache extends AbstractActor{
     public void onAcceptedWriteMsg(AcceptedWriteMsg msg) {
         log.info("[{} CACHE {}] Received accepted write msg; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), msg.getKey(), msg.getValue());
 
-        System.out.println("[cache] before removal , childrenToAcceptWriteByKey: " + childrenToAcceptWriteByKey.toString());
+        //System.out.println("[cache] before removal , childrenToAcceptWriteByKey: " + childrenToAcceptWriteByKey.toString());
         // remove from the set of caches that must respond to this cache
         childrenToAcceptWriteByKey.get(msg.getKey()).remove(getSender());
 
-        System.out.println("[cache] after removal, childrenToAcceptWriteByKey: " + childrenToAcceptWriteByKey.toString());
+        //System.out.println("[cache] after removal, childrenToAcceptWriteByKey: " + childrenToAcceptWriteByKey.toString());
 
         childrenAcceptedWriteByKey.putIfAbsent(msg.getKey(), new HashSet<ActorRef>());
         childrenAcceptedWriteByKey.get(msg.getKey()).add(getSender());
@@ -1062,6 +1084,9 @@ public class Cache extends AbstractActor{
             acceptedWriteMsg.addCaches(childrenAcceptedWriteByKey.get(msg.getKey()));
             getDatabase().tell(acceptedWriteMsg, getSelf());
             log.info("[{} CACHE {}] Sent accepted write msg to {}", getCacheType().toString(), String.valueOf(getID()), getDatabase().path().name());
+
+            // start timeout for apply write msg from database
+            //startTimeout("apply_write", );
         }
 
     }
@@ -1116,20 +1141,20 @@ public class Cache extends AbstractActor{
 
     // only l1 caches receive this message (or the database)
     public void onConfirmedWriteMsg(ConfirmedWriteMsg msg) {
-        log.info("[DATABASE " + id + "] Received confirmed write msg; key:{}, value:{} from {}", msg.getKey(), msg.getValue(), getSender().path().name());
+        log.info("[{} CACHE {}] Received confirmed write msg; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), msg.getKey(), msg.getValue());
 
-        System.out.println("before removal , childrenToConfirmWriteByKey: " + childrenToConfirmWriteByKey.toString());
+        //System.out.println("before removal , childrenToConfirmWriteByKey: " + childrenToConfirmWriteByKey.toString());
         // remove from the set of caches that must respond to this cache
         childrenToConfirmWriteByKey.get(msg.getKey()).remove(getSender());
 
-        System.out.println("after removal, childrenToConfirmWriteByKey: " + childrenToConfirmWriteByKey.toString());
+        //System.out.println("after removal, childrenToConfirmWriteByKey: " + childrenToConfirmWriteByKey.toString());
 
         childrenConfirmedWriteByKey.putIfAbsent(msg.getKey(), new HashSet<ActorRef>());
         childrenConfirmedWriteByKey.get(msg.getKey()).add(getSender());
 
         // check every time if all caches have responded for that specific key
         if (childrenToConfirmWriteByKey.get(msg.getKey()).isEmpty()) {
-            log.info("[DATABASE " + id + "] All caches have responded (confirmed write) for key: {}", msg.getKey());
+            log.info("[{} CACHE {}] All children have responded", getCacheType().toString(), String.valueOf(getID()));
 
             // all children have responded, send ConfirmedWriteMsg to database
             // ConfirmedWrite must contain the set of caches involved in this portion of the tree
@@ -1140,7 +1165,7 @@ public class Cache extends AbstractActor{
             confirmedWriteMsg.addCaches(cachesConfirmedWrite);
 
             getDatabase().tell(confirmedWriteMsg, getSelf());
-            log.info("[DATABASE " + id + "] Sent confirmed write msg to database");
+            log.info("[{} CACHE {}] Sent confirmed write msg to {}", getCacheType().toString(), String.valueOf(getID()), getDatabase().path().name());
         }
     }
 
@@ -1291,7 +1316,7 @@ public class Cache extends AbstractActor{
     public void onResponseConnectionMsg(ResponseConnectionMsg msg){
 
         // this is the case when a L1 cache crashes and so a L2 cache child tries to connect to the database
-        // therefore, this business logic will be executed only by L2 caches
+        // therefore, this business logic will be executed ONLY by L2 caches
 
         log.info("[{} CACHE {}] Received response connection msg from {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
         if(msg.getResponse().equals("ACCEPTED")){
@@ -1300,7 +1325,6 @@ public class Cache extends AbstractActor{
             int delay = 80;
             addDelayInSeconds(delay);
             log.info("[{} CACHE {}] Delayed by {} seconds", getCacheType().toString(), String.valueOf(getID()), String.valueOf(delay));
-
 
             // since, unlike the clients, caches do not perform only 1 requests at time
             // we must retry all requests that are not yet completed
