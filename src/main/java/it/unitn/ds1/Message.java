@@ -62,16 +62,21 @@ public class Message {
     public static class DbTimeoutMsg implements Serializable{
 
         private String type;
-
+        private final int key;
         private final long requestId;
 
-        public DbTimeoutMsg(String type, long requestId) {
+        public DbTimeoutMsg(String type, int key, long requestId){
             this.type = type;
+            this.key = key;
             this.requestId = requestId;
         }
 
         public String getType() {
             return this.type;
+        }
+
+        public int getKey() {
+        	return this.key;
         }
 
         public long getRequestId() {
@@ -786,10 +791,12 @@ public class Message {
     public static class ProposedWriteMsg implements Serializable {
         private final int key;
         private final int value;
+        private final long requestId;
 
-        public ProposedWriteMsg(int key, int value) {
+        public ProposedWriteMsg(int key, int value, long requestId) {
             this.key = key;
             this.value = value;
+            this.requestId = requestId;
         }
 
         public int getKey() {
@@ -798,6 +805,10 @@ public class Message {
 
         public int getValue() {
             return value;
+        }
+
+        public long getRequestId() {
+            return requestId;
         }
 
     }
@@ -805,14 +816,16 @@ public class Message {
     public static class AcceptedWriteMsg implements Serializable {
         private final int key;
         private final int value;
+        private final long requestId;
 
         // set to store the caches that have been effectively updated
         // must be set by L1 caches only
         private final Set<ActorRef> caches = new HashSet<>();
 
-        public AcceptedWriteMsg(int key, int value) {
+        public AcceptedWriteMsg(int key, int value, long requestId) {
             this.key = key;
             this.value = value;
+            this.requestId = requestId;
         }
 
         public int getKey() {
@@ -821,6 +834,10 @@ public class Message {
 
         public int getValue() {
             return value;
+        }
+
+        public long getRequestId() {
+            return requestId;
         }
 
         public Set<ActorRef> getCaches() {
@@ -840,10 +857,12 @@ public class Message {
     public static class ApplyWriteMsg implements Serializable {
         private final int key;
         private final int value;
+        private final long requestId;
 
-        public ApplyWriteMsg(int key, int value) {
+        public ApplyWriteMsg(int key, int value, long requestId) {
             this.key = key;
             this.value = value;
+            this.requestId = requestId;
         }
 
         public int getKey() {
@@ -852,6 +871,10 @@ public class Message {
 
         public int getValue() {
             return value;
+        }
+
+        public long getRequestId() {
+            return requestId;
         }
 
     }
@@ -859,14 +882,17 @@ public class Message {
     public static class ConfirmedWriteMsg implements Serializable {
         private final int key;
         private final int value;
+        private final long requestId;
+
 
         // set to store the caches that have been effectively updated
         // must be set by L1 caches only
         private final Set<ActorRef> caches = new HashSet<>();
 
-        public ConfirmedWriteMsg(int key, int value) {
+        public ConfirmedWriteMsg(int key, int value, long requestId) {
             this.key = key;
             this.value = value;
+            this.requestId = requestId;
         }
 
         public int getKey() {
@@ -875,6 +901,10 @@ public class Message {
 
         public int getValue() {
             return value;
+        }
+
+        public long getRequestId() {
+            return requestId;
         }
 
         public Set<ActorRef> getCaches() {

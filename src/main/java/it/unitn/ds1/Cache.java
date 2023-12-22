@@ -577,6 +577,27 @@ public class Cache extends AbstractActor{
                 }
                 break;
             case "apply_write":
+                // can be received by both L1 and L2 cache
+                // (but db is always available)
+
+
+                //
+
+
+
+
+                // l2 can connect to db and ask for the data, checking if the critical write was applied
+
+                break;
+            case "accepted_write":
+                // only L1 cache can receive this type of timeout message, from L2 caches
+                // at least one L2 cache is crashed
+
+                // strategy1 -> assumption: L2 cache is crashed and not slow
+                // strategy2 -> assumption: L2 cache is wither crashed or slow -> abort crit_write operation
+
+
+                break;
 
             default:
                 log.info("[{} CACHE {}] Received timeout msg for unknown operation", getCacheType().toString(), String.valueOf(getID()));
@@ -1010,13 +1031,18 @@ public class Cache extends AbstractActor{
     public void onProposedWriteMsg(ProposedWriteMsg proposedWriteMsg){
         log.info("[{} CACHE {}] Received proposed write msg; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), proposedWriteMsg.getKey(), proposedWriteMsg.getValue());
 
+        if(getID() == 1){
+            int delay = 1650;
+            addDelayInSeconds(delay);
+            log.info("[{} CACHE {}] Delayed by {} seconds", getCacheType().toString(), String.valueOf(getID()), delay);
+        }
+
         // check if the proposed value is already present in the tmpWriteData
         if(tmpWriteData.containsKey(proposedWriteMsg.getKey())) {
             log.info("[{} CACHE {}] Proposed value is already present in the cache", getCacheType().toString(), String.valueOf(getID()));
             // if yes, then a concurrent critical write is on
             // should never happen
-            // if the db has started a critical write for the same key,
-            // it refuse the critical write (or retry at the end of the entire operation maybe)
+            // if the db has started a critical write for the same key, it refuses the critical write (or retry at the end of the entire operation maybe)
         } else {
             // if no, then store the proposed value in a temporary structure
             tmpWriteData.put(proposedWriteMsg.getKey(), proposedWriteMsg.getValue());
@@ -1046,7 +1072,7 @@ public class Cache extends AbstractActor{
         // send a acceptedWrite to the sender of the proposedWriteMsg
         // either l1 cache or database
         if(getCacheType() == TYPE.L2){
-            AcceptedWriteMsg acceptedWriteMsg = new AcceptedWriteMsg(proposedWriteMsg.getKey(), proposedWriteMsg.getValue());
+            AcceptedWriteMsg acceptedWriteMsg = new AcceptedWriteMsg(proposedWriteMsg.getKey(), proposedWriteMsg.getValue(), proposedWriteMsg.getRequestId());
             acceptedWriteMsg.addCache(getSelf());
             getSender().tell(acceptedWriteMsg, getSelf());
             log.info("[{} CACHE {}] Sent accepted write msg to {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
@@ -1080,7 +1106,8 @@ public class Cache extends AbstractActor{
 
             // all children have responded, send AcceptedWriteMsg to database
             // AcceptedWrite must contain the set of caches involved in this portion of the tree
-            AcceptedWriteMsg acceptedWriteMsg = new AcceptedWriteMsg(msg.getKey(), msg.getValue());
+            // assumption: all children have responded
+            AcceptedWriteMsg acceptedWriteMsg = new AcceptedWriteMsg(msg.getKey(), msg.getValue(), msg.getRequestId());
             acceptedWriteMsg.addCaches(childrenAcceptedWriteByKey.get(msg.getKey()));
             getDatabase().tell(acceptedWriteMsg, getSelf());
             log.info("[{} CACHE {}] Sent accepted write msg to {}", getCacheType().toString(), String.valueOf(getID()), getDatabase().path().name());
@@ -1120,19 +1147,22 @@ public class Cache extends AbstractActor{
 
             // a l1 cache must wait for all the confirmedWrite from its children
             // start a specific timeout, one for each child maybe
+            //startTimeout("confirmed_write", );
+
         }
 
         // if l2 cache
         // send a confirmedWrite to the sender of the applyWriteMsg
         // either l1 cache or database
         if(getCacheType() == TYPE.L2){
-            ConfirmedWriteMsg confirmedWriteMsg = new ConfirmedWriteMsg(applyWriteMsg.getKey(), applyWriteMsg.getValue());
+            ConfirmedWriteMsg confirmedWriteMsg = new ConfirmedWriteMsg(applyWriteMsg.getKey(), applyWriteMsg.getValue(), applyWriteMsg.getRequestId());
             confirmedWriteMsg.addCache(getSelf());
             getSender().tell(confirmedWriteMsg, getSelf());
             log.info("[{} CACHE {}] Sent confirmed write msg to {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
 
             // start a specific timeout, waiting for the apply write msg
             // this l2 cache could be connected either to a l1 cache or to the database
+            //startTimeout("apply_write", );
         }
 
 
@@ -1158,7 +1188,7 @@ public class Cache extends AbstractActor{
 
             // all children have responded, send ConfirmedWriteMsg to database
             // ConfirmedWrite must contain the set of caches involved in this portion of the tree
-            ConfirmedWriteMsg confirmedWriteMsg = new ConfirmedWriteMsg(msg.getKey(), msg.getValue());
+            ConfirmedWriteMsg confirmedWriteMsg = new ConfirmedWriteMsg(msg.getKey(), msg.getValue(), msg.getRequestId());
 
             Set<ActorRef> cachesConfirmedWrite = childrenConfirmedWriteByKey.get(msg.getKey());
             cachesConfirmedWrite.add(getSelf());

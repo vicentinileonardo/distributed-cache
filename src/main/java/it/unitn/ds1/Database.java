@@ -137,12 +137,12 @@ public class Database extends AbstractActor {
     }
 
 
-    private void startTimeout(String type, long requestId) {
+    private void startTimeout(String type, int key, long requestId) {
         log.info("[DATABASE " + id + "] Starting timeout for " + type + " request " + requestId);
         getContext().system().scheduler().scheduleOnce(
             Duration.create(getTimeout(type), TimeUnit.SECONDS),
             getSelf(),
-            new DbTimeoutMsg(type, requestId),
+            new DbTimeoutMsg(type, key, requestId),
             getContext().system().dispatcher(),
             getSelf()
         );
@@ -220,17 +220,15 @@ public class Database extends AbstractActor {
 
     private void sendProposedWrite(CriticalWriteRequestMsg criticalWriteRequestMsg, Set<ActorRef> caches) {
 
-        System.out.println("[db, sendProposedWrite] criticalWriteRequestMsg: " + criticalWriteRequestMsg);
-        System.out.println("[db, sendProposedWrite] caches: " + caches.toString());
+        //System.out.println("[db, sendProposedWrite] criticalWriteRequestMsg: " + criticalWriteRequestMsg);
+        //System.out.println("[db, sendProposedWrite] caches: " + caches.toString());
 
-        ProposedWriteMsg proposedWriteMsg = new ProposedWriteMsg(criticalWriteRequestMsg.getKey(), criticalWriteRequestMsg.getValue());
+        ProposedWriteMsg proposedWriteMsg = new ProposedWriteMsg(criticalWriteRequestMsg.getKey(), criticalWriteRequestMsg.getValue(), criticalWriteRequestMsg.getRequestId());
 
         for (ActorRef cache : caches) {
              cache.tell(proposedWriteMsg, getSelf());
              log.info("[DATABASE " + id + "] Sent a proposed write message to cache " + cache.path().name());
         }
-
-
 
     }
 
@@ -241,7 +239,7 @@ public class Database extends AbstractActor {
 
         log.info("[DATABASE " + id + "] Sending an apply write message to caches");
 
-        ApplyWriteMsg applyWriteMsg = new ApplyWriteMsg(acceptedWriteMsg.getKey(), acceptedWriteMsg.getValue());
+        ApplyWriteMsg applyWriteMsg = new ApplyWriteMsg(acceptedWriteMsg.getKey(), acceptedWriteMsg.getValue(), acceptedWriteMsg.getRequestId());
 
         for (ActorRef cache : caches) {
             log.info("[DATABASE " + id + "] Sending an apply write message to cache " + cache.path().name());
@@ -249,14 +247,16 @@ public class Database extends AbstractActor {
             log.info("[DATABASE " + id + "] Sent an apply write message to cache " + cache.path().name());
         }
 
-        // get request id
+
+        // TO BE moved out of here
+        // get key
         int key = acceptedWriteMsg.getKey();
 
         // get the request id
         long requestId = ongoingCritWrites.get(key).getRequestId();
 
         // set a timeout, waiting for all confirmed writes
-        startTimeout("confirmed_write", requestId);
+        startTimeout("confirmed_write", key, requestId);
         log.info("[DATABASE " + id + "] Started timeout for confirmed write request " + requestId);
 
     }
@@ -424,7 +424,7 @@ public class Database extends AbstractActor {
     public void onCriticalWriteRequestMsg(CriticalWriteRequestMsg criticalWriteRequestMsg) {
         log.info("[DATABASE " + id + "] Received a critical write request for key " + criticalWriteRequestMsg.getKey() + " with value " + criticalWriteRequestMsg.getKey());
 
-        int delay = 30;
+        int delay = 1;
         addDelayInSeconds(delay);
         log.info("[DATABASE " + id + "] Delayed critical write request for key " + criticalWriteRequestMsg.getKey() + " from cache " + getSender().path().name() + " by " + delay + " seconds");
 
@@ -474,11 +474,14 @@ public class Database extends AbstractActor {
         }
 
 
+        // get key
+        int key = criticalWriteRequestMsg.getKey();
+
         // get request id
         long requestId = criticalWriteRequestMsg.getRequestId();
 
         // set a timeout, waiting for the accepted write messages
-        startTimeout("accepted_write", requestId);
+        startTimeout("accepted_write", key, requestId);
         log.info("[DATABASE " + id + "] Started timeout for proposed write request " + requestId);
 
     }
@@ -488,6 +491,12 @@ public class Database extends AbstractActor {
         //System.out.println("[database] beginning, before sendApplyWrite to L1, caches: " + L1_caches);
 
         log.info("[DATABASE " + id + "] Received accepted write msg; key:{}, value:{} from {}", acceptedWriteMsg.getKey(), acceptedWriteMsg.getValue(), getSender().path().name());
+
+        // check if the related crit_write is still going on
+        if(!ongoingCritWritesRequestId.contains(acceptedWriteMsg.getRequestId())){
+            log.info("[DATABASE " + id + "] Received accepted write msg for request id " + acceptedWriteMsg.getRequestId() + " but the related critical write is not ongoing anymore");
+            return;
+        }
 
 
         //System.out.println("[database] before removal, L1 caches: " + L1_caches);
@@ -549,6 +558,12 @@ public class Database extends AbstractActor {
 
     public void onConfirmedWriteMsg(ConfirmedWriteMsg confirmedWriteMsg) {
         log.info("[DATABASE " + id + "] Received confirmed write msg; key:{}, value:{} from {}", confirmedWriteMsg.getKey(), confirmedWriteMsg.getValue(), getSender().path().name());
+
+        // check if the related crit_write is still going on
+        if(!ongoingCritWritesRequestId.contains(confirmedWriteMsg.getRequestId())){
+            log.info("[DATABASE " + id + "] Received confirmed write msg for request id " + confirmedWriteMsg.getRequestId() + " but the related critical write is not ongoing anymore");
+            return;
+        }
 
         //System.out.println("[database] before removal , childrenToConfirmWriteByKey: " + childrenToConfirmWriteByKey.toString());
         // remove from the set of caches that must respond to this cache
@@ -631,12 +646,47 @@ public class Database extends AbstractActor {
 
         switch (msg.getType()) {
             case "accepted_write":
+
+                // received either from L1 cache (default) or L2 cache (connected)
                 log.info("[DATABASE " + id + "] Received timeout msg for accepted write operation");
-                log.info("[DATABASE " + id + "] doing something");
+
+                // TODO: tell to the cache that is missing to drop the key (we do not know if it is crashed or just slow)
+                // the L2 cache children will connect to the database thanks to their timeout against the L1 cache
+
+
+
+                // TODO: check when to abort
+
+                log.info("[DATABASE " + id + "] Aborting critical write operation for key: {} and request id: {}", msg.getKey(), msg.getRequestId());
+
+                // crit_write abortion procedure
+
+                CriticalWriteRequestMsg criticalWriteRequestMsg = ongoingCritWrites.remove(msg.getKey());
+                ActorRef child = criticalWriteRequestMsg.getLast();
+
+                // send write response with value isRefused = true
+                CriticalWriteResponseMsg criticalWriteResponseMsg = new CriticalWriteResponseMsg(criticalWriteRequestMsg.getKey(), criticalWriteRequestMsg.getValue(), criticalWriteRequestMsg.getPath(), criticalWriteRequestMsg.getRequestId(), true);
+
+                ongoingCritWritesRequestId.remove(msg.getRequestId());
+                involvedCachesCritWrites.remove(msg.getKey());
+                childrenToAcceptWriteByKey.remove(msg.getKey());
+                childrenAcceptedWriteByKey.remove(msg.getKey());
+                childrenToConfirmWriteByKey.remove(msg.getKey());
+                childrenConfirmedWriteByKey.remove(msg.getKey());
+
+                child.tell(criticalWriteResponseMsg, getSelf());
+                log.info("[DATABASE " + id + "] Sending write response to cache" + child.path().name());
+
                 break;
             case "confirmed_write":
+                // received either from L1 cache (default) or L2 cache (connected)
                 log.info("[DATABASE " + id + "] Received timeout msg for confirmed write operation");
-                log.info("[DATABASE " + id + "] doing something");
+
+
+                // crit_write abortion procedure
+                // TODO: similar to accepted write
+
+
                 break;
             default:
                 log.info("[DATABASE " + id + "] Received timeout msg for unknown operation");
