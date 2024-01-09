@@ -18,7 +18,7 @@ public class Database extends AbstractActor {
     private int id;
 
     //DEBUG ONLY: assumption that the database is always up
-    private boolean crashed = false;
+    //private boolean crashed = false;
 
     private Map<Integer, Integer> data = new HashMap<>();
 
@@ -337,7 +337,7 @@ public class Database extends AbstractActor {
     public void onReadRequestMsg(Message.ReadRequestMsg readRequestMsg){
         log.info("[DATABASE " + id + "] Received a read request for key " + readRequestMsg.getKey() + " from cache " + getSender().path().name());
 
-        int delay = 30;
+        int delay = 0;
         addDelayInSeconds(delay);
         log.info("[DATABASE " + id + "] Delayed read request for key " + readRequestMsg.getKey() + " from cache " + getSender().path().name() + " by " + delay + " seconds");
 
@@ -424,20 +424,19 @@ public class Database extends AbstractActor {
     public void onCriticalWriteRequestMsg(CriticalWriteRequestMsg criticalWriteRequestMsg) {
         log.info("[DATABASE " + id + "] Received a critical write request for key " + criticalWriteRequestMsg.getKey() + " with value " + criticalWriteRequestMsg.getKey());
 
-        int delay = 1;
+        int delay = 0;
         addDelayInSeconds(delay);
         log.info("[DATABASE " + id + "] Delayed critical write request for key " + criticalWriteRequestMsg.getKey() + " from cache " + getSender().path().name() + " by " + delay + " seconds");
 
         // check if the key is already present in ongoingCritWrites
         if (ongoingCritWrites.containsKey(criticalWriteRequestMsg.getKey())) {
-            // the critical write will not be accepted
+            // the critical write will NOT be accepted
             log.info("[DATABASE " + id + "] Critical write for key " + criticalWriteRequestMsg.getKey() + " with value " + criticalWriteRequestMsg.getValue() + " will not be accepted");
 
             // send write response with value isRefused = true
             CriticalWriteResponseMsg criticalWriteResponseMsg = new CriticalWriteResponseMsg(criticalWriteRequestMsg.getKey(), criticalWriteRequestMsg.getValue(), criticalWriteRequestMsg.getPath(), criticalWriteRequestMsg.getRequestId(), true);
             getSender().tell(criticalWriteResponseMsg, getSelf());
             log.info("[DATABASE " + id + "] Sending write response to cache " + getSender().path().name());
-
         }
 
         ongoingCritWrites.put(criticalWriteRequestMsg.getKey(), criticalWriteRequestMsg);
@@ -453,7 +452,7 @@ public class Database extends AbstractActor {
             log.info("[DATABASE " + id + "] L1 cache, onCriticalWriteRequestMsg: " + cache.path().name());
         }
 
-        //create a set of caches that will accept the write, starting from the L1 caches
+        //create a set of caches that will accept the critical write, starting from the L1 caches
         Set<ActorRef> cachesToAcceptWrite = new HashSet<>(L1_caches);
 
         sendProposedWrite(criticalWriteRequestMsg, cachesToAcceptWrite);
@@ -628,6 +627,7 @@ public class Database extends AbstractActor {
 
         // get the values for the keys in the message
         for (Integer key : msg.getKeys()){
+            System.out.println("[database] onRequestUpdatedDataMsg, key: " + key);
             tmpData.put(key, getData(key));
         }
 
@@ -651,11 +651,8 @@ public class Database extends AbstractActor {
                 log.info("[DATABASE " + id + "] Received timeout msg for accepted write operation");
 
                 // TODO: tell to the cache that is missing to drop the key (we do not know if it is crashed or just slow)
-                // the L2 cache children will connect to the database thanks to their timeout against the L1 cache
+                // if the L1 cache is crashed: the L2 cache children will connect to the database thanks to their timeout against the L1 cache
 
-
-
-                // TODO: check when to abort
 
                 log.info("[DATABASE " + id + "] Aborting critical write operation for key: {} and request id: {}", msg.getKey(), msg.getRequestId());
 
@@ -675,7 +672,7 @@ public class Database extends AbstractActor {
                 childrenConfirmedWriteByKey.remove(msg.getKey());
 
                 child.tell(criticalWriteResponseMsg, getSelf());
-                log.info("[DATABASE " + id + "] Sending write response to cache" + child.path().name());
+                log.info("[DATABASE " + id + "] Sending (NOT FULFILLED) write response to cache" + child.path().name());
 
                 break;
             case "confirmed_write":

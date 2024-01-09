@@ -31,7 +31,7 @@ public class Message {
         // variable to store the string of the name of the actor on the other side of the connection
         private final String connectionDestination;
 
-        //for clients
+        //for clients, maybe not needed
         public TimeoutMsg(String type, String connectionDestination){
             this.type = type; //can be "read","write","connection"
             this.requestId = -1; //not used
@@ -149,6 +149,12 @@ public class Message {
 
         public Set<Integer> getKeys() {
             return this.keys;
+        }
+
+        //to string method
+        @Override
+        public String toString() {
+        	return "RequestUpdatedDataMsg: " + this.getKeys().toString();
         }
     }
 

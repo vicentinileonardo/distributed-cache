@@ -267,20 +267,25 @@ public class DistributedCacheSystem {
         System.out.println("L1 caches initialized");
     }
 
-    private void sendReadMsgs(int clientId) {
+    private void sendReadMsgs(int clientId, int key) {
         ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
 
         // generate a random number
         Random rndm = new Random();
 
-        // this will generate a random number between 0 and
-        // HashSet.size - 1
-        int rndmNumber = rndm.nextInt(this.clientActors.size());
-        ActorRef client = tmpArray[rndmNumber];
-        //ActorRef client = tmpArray[clientId];
-        int rndmKey = rndm.nextInt(10);
-        int specificKey = 4;
-        Message.StartReadRequestMsg msg = new Message.StartReadRequestMsg(specificKey);
+        if (clientId == -1) {
+            // this will generate a random number between 0 and
+            // HashSet.size - 1
+            clientId = rndm.nextInt(this.clientActors.size());
+        }
+
+        ActorRef client = tmpArray[clientId];
+
+        if(key == -1) {
+            key = rndm.nextInt(10);
+        }
+
+        Message.StartReadRequestMsg msg = new Message.StartReadRequestMsg(key);
         client.tell(msg, ActorRef.noSender());
     }
 
@@ -304,20 +309,25 @@ public class DistributedCacheSystem {
         client.tell(msg, ActorRef.noSender());
     }
 
-    private void sendCritReadMsgs(int clientId) {
+    private void sendCritReadMsgs(int clientId, int key) {
         ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
 
         // generate a random number
         Random rndm = new Random();
 
-        // this will generate a random number between 0 and
-        // HashSet.size - 1
-        int rndmNumber = rndm.nextInt(this.clientActors.size());
-        ActorRef client = tmpArray[rndmNumber];
-        //ActorRef client = tmpArray[clientId];
-        int rndmKey = rndm.nextInt(10);
-        int specificKey = 4;
-        StartCriticalReadRequestMsg msg = new StartCriticalReadRequestMsg(specificKey);
+        if (clientId == -1) {
+            // this will generate a random number between 0 and
+            // HashSet.size - 1
+            clientId = rndm.nextInt(this.clientActors.size());
+        }
+
+        ActorRef client = tmpArray[clientId];
+
+        if(key == -1) {
+            key = rndm.nextInt(10);
+        }
+
+        StartCriticalReadRequestMsg msg = new StartCriticalReadRequestMsg(key);
         client.tell(msg, ActorRef.noSender());
     }
 
@@ -400,15 +410,22 @@ public class DistributedCacheSystem {
 
 
 
-        //distributedCacheSystem.sendReadMsgs(0);
-        //sleep(1000);
+        distributedCacheSystem.sendReadMsgs(0, 1);
+        sleep(10000);
+        distributedCacheSystem.sendReadMsgs(0, 2);
+        sleep(10000);
+        distributedCacheSystem.sendReadMsgs(0, 3);
+
+
         //distributedCacheSystem.sendWriteMsgs(1);
         //sleep(1000);
         //distributedCacheSystem.sendReadMsgs(2);
-        //sleep(900000000);
-        //distributedCacheSystem.sendCritReadMsgs(3);
+        //sleep(50000);
+        //distributedCacheSystem.sendCritReadMsgs(0, 6);
+        //sleep(1000000);
+        //distributedCacheSystem.sendReadMsgs(0, 6);
 
-        distributedCacheSystem.sendCritWriteMsgs(3);
+        //distributedCacheSystem.sendCritWriteMsgs(3);
 
 
 
