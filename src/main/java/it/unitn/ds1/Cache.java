@@ -556,12 +556,14 @@ public class Cache extends AbstractActor{
 
                 System.out.println("L1 cache " + getID() + " received timeout msg for response_data_recover");
 
-                // some children have responded, at least one is missing (but 1 crash at most is tolerated)
+                // some children have responded, but at least one is missing (but 1 crash at most is tolerated)
                 // recoveredKeys contains all the keys that need to be recovered
                 this.isWaitingForKeys = false;
 
                 // ask the database for the "fresh" values of the recovered keys
-                getParent().tell(new RequestUpdatedDataMsg(recoveredKeys), getSelf());
+                HashSet<Integer> recoveredKeysToSend = new HashSet<>(this.recoveredKeys);
+                RequestUpdatedDataMsg requestUpdatedDataMsg = new RequestUpdatedDataMsg(recoveredKeysToSend);
+                getParent().tell(requestUpdatedDataMsg, getSelf());
                 log.info("[{} CACHE {}] Sent request updated data msg to {}", getCacheType(), getID(), getParent().path().name());
 
                 log.info("[{} CACHE {}] BEFORE, Recovered keys updated: {}", getCacheType(), getID(), recoveredKeys.toString());
@@ -575,7 +577,7 @@ public class Cache extends AbstractActor{
                 childrenSources.clear();
                 log.info("[{} CACHE {}] Cleared children sources", getCacheType(), getID());
                 log.info("[{} CACHE {}] Children sources updated: {}", getCacheType(), getID(), childrenSources.toString());
-
+                return;
             }
         }
 
@@ -1354,7 +1356,7 @@ public class Cache extends AbstractActor{
             throw new InvalidMessageException("Message to wrong destination!");
         }
         addChild(msg.id);
-        log.info("[{} CACHE {}] Added {} as a child", getCacheType(), getID(), getSender().path().name());
+        log.info("[{} CACHE {}] -------------------------------------------------------------- Added {} as a child", getCacheType(), getID(), getSender().path().name());
     }
 
     private void onInfoMsg (InfoMsg msg){
@@ -1403,7 +1405,8 @@ public class Cache extends AbstractActor{
                         childrenSources.add(child);
                         log.info("[{} CACHE {}] Sent request data recover msg to {}", getCacheType(), getID(), child.path().name());
                     }
-                    System.out.println("childrenSources: " + childrenSources.toString());
+
+                    log.info("[{} CACHE {}] Sent request data recover msg to sources: {}", getCacheType(), getID(), childrenSources.toString());
                 }
                 // start a specific timeout, waiting for the ResponseDataRecoverMsg
                 // general timeout, not specific for each child
@@ -1432,15 +1435,18 @@ public class Cache extends AbstractActor{
 
         childrenSources.remove(getSender());
         if (msg.getParent() != getSelf()) { // should never happen
-            //children.remove(getSender());
+            //log.info("[{} CACHE {}] Received response data recover msg from wrong parent", getCacheType(), getID());
         }
 
         recoveredKeys.addAll(msg.getData().keySet());
         log.info("[{} CACHE {}] Added keys to recovered keys: {}", getCacheType(), getID(), recoveredKeys.toString());
+
+        // recoveredValuesOfSources keeps tracks also of the children that have responded
         recoveredValuesOfSources.put(getSender(), msg.getData());
         log.info("[{} CACHE {}] Added data to recovered values of sources: {}", getCacheType(), getID(), recoveredValuesOfSources.toString());
 
-        // Either this condition is true, or the specific timeout will expire
+        // Either this condition is true
+        // or the specific timeout will expire and the following logic will be executed onTimeoutMsg
         if (childrenSources.isEmpty()) {
             log.info("[{} CACHE {}] All children have responded for keys recovery", getCacheType(), getID());
 
@@ -1468,12 +1474,13 @@ public class Cache extends AbstractActor{
         /*
         if(this.getID() == 1){
             System.out.println("Adding delay, on the CHOSEN cache");
-            int delay = 60;
+            int delay = 200;
             addDelayInSeconds(delay);
             log.info("[{} CACHE {}] Added delay of {} seconds", getCacheType().toString(), String.valueOf(getID()), String.valueOf(delay));
         }
 
          */
+
 
         addNetworkDelay();
         log.info("[{} CACHE {}] Added network delay", getCacheType().toString(), String.valueOf(getID()));
@@ -1508,8 +1515,6 @@ public class Cache extends AbstractActor{
         // since we just contacted the db, which is the source of truth
         // we do not need timeouts for this step
 
-        System.out.println("this.recoveredValuesOfSources: " + this.recoveredValuesOfSources.toString());
-
         // we loop for every child
         for (Map.Entry<ActorRef, Map<Integer, Integer>> entry : this.recoveredValuesOfSources.entrySet()) {
             ActorRef child = entry.getKey();
@@ -1532,6 +1537,7 @@ public class Cache extends AbstractActor{
                 } else {
                     System.out.println("[extra step] inside else, normal case");
 
+                    // inconsistency between the data of the child and the data of the db
                     // we send only the data that is different from the one the child already has, to save bandwidth
                     if (msg.getData().get(key) != value) {
                         System.out.println("different data");
@@ -1586,10 +1592,9 @@ public class Cache extends AbstractActor{
         }
     }
 
+    // this is the case when a L1 cache crashes and so a L2 cache child tries to connect to the database
+    // therefore, this business logic will be executed ONLY by L2 caches
     public void onResponseConnectionMsg(ResponseConnectionMsg msg){
-
-        // this is the case when a L1 cache crashes and so a L2 cache child tries to connect to the database
-        // therefore, this business logic will be executed ONLY by L2 caches
 
         log.info("[{} CACHE {}] Received response connection msg from {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
         if(msg.getResponse().equals("ACCEPTED")){

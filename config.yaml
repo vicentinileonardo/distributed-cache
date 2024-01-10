@@ -42,7 +42,7 @@ l1Caches:
     - type: !!str crit_write
       value: !!int 1200
     - type: !!str response_data_recover
-      value: !!int 9000000
+      value: !!int 80
 
 database:
   timeouts:

@@ -339,6 +339,7 @@ public class Client extends AbstractActor {
             ClientOperation lastOp = operations.get(operations.size() - 1);
             if(lastOp.isFinished()){
                 log.info("[CLIENT " + id + "] Operation" + lastOp.getOperation() + " finished");
+                return;
             }
 
             //int delayInSeconds = rnd.nextInt(5);
