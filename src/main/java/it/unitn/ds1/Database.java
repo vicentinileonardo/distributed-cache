@@ -247,8 +247,6 @@ public class Database extends AbstractActor {
             log.info("[DATABASE " + id + "] Sent an apply write message to cache " + cache.path().name());
         }
 
-
-        // TO BE moved out of here
         // get key
         int key = acceptedWriteMsg.getKey();
 
@@ -422,21 +420,23 @@ public class Database extends AbstractActor {
     }
 
     public void onCriticalWriteRequestMsg(CriticalWriteRequestMsg criticalWriteRequestMsg) {
-        log.info("[DATABASE " + id + "] Received a critical write request for key " + criticalWriteRequestMsg.getKey() + " with value " + criticalWriteRequestMsg.getKey());
+        log.info("[DATABASE " + id + "] Received a critical write request for key " + criticalWriteRequestMsg.getKey() + " with value " + criticalWriteRequestMsg.getValue() + " from cache " + getSender().path().name());
 
         int delay = 0;
         addDelayInSeconds(delay);
         log.info("[DATABASE " + id + "] Delayed critical write request for key " + criticalWriteRequestMsg.getKey() + " from cache " + getSender().path().name() + " by " + delay + " seconds");
 
         // check if the key is already present in ongoingCritWrites
+        // this could also be a use case for retryRequest from a L2 cache connecting directly to the database
         if (ongoingCritWrites.containsKey(criticalWriteRequestMsg.getKey())) {
             // the critical write will NOT be accepted
-            log.info("[DATABASE " + id + "] Critical write for key " + criticalWriteRequestMsg.getKey() + " with value " + criticalWriteRequestMsg.getValue() + " will not be accepted");
+            log.info("[DATABASE " + id + "] Critical write for key " + criticalWriteRequestMsg.getKey() + " with value " + criticalWriteRequestMsg.getValue() + " will NOT be accepted");
 
             // send write response with value isRefused = true
             CriticalWriteResponseMsg criticalWriteResponseMsg = new CriticalWriteResponseMsg(criticalWriteRequestMsg.getKey(), criticalWriteRequestMsg.getValue(), criticalWriteRequestMsg.getPath(), criticalWriteRequestMsg.getRequestId(), true);
             getSender().tell(criticalWriteResponseMsg, getSelf());
             log.info("[DATABASE " + id + "] Sending write response to cache " + getSender().path().name());
+            return;
         }
 
         ongoingCritWrites.put(criticalWriteRequestMsg.getKey(), criticalWriteRequestMsg);
@@ -650,8 +650,29 @@ public class Database extends AbstractActor {
                 // received either from L1 cache (default) or L2 cache (connected)
                 log.info("[DATABASE " + id + "] Received timeout msg for accepted write operation");
 
-                // TODO: tell to the cache that is missing to drop the key (we do not know if it is crashed or just slow)
-                // if the L1 cache is crashed: the L2 cache children will connect to the database thanks to their timeout against the L1 cache
+                // crit_write will be aborted
+                // database did not addData
+                // some caches have accepted the crit_write
+                // so they have tmpWriteData for that key
+                // and they will have cleared the value on data hashmap, unnecessary data loss (tradeoff)
+                // we need to clear tmpWriteData for that key to allow future crit_writes on that key
+
+                // either the caches receive the DropTmpWriteDataMsg and clear tmpWriteData (reliable FIFO channels)
+                // or they have crashed and lose by itself the tmpWriteData
+
+                // loop through all L1 children
+                for (ActorRef child : L1_caches) {
+                    DropTmpWriteDataMsg dropTmpWriteDataMsg = new DropTmpWriteDataMsg(msg.getKey());
+                    child.tell(dropTmpWriteDataMsg, getSelf());
+                    log.info("[DATABASE " + id + "] Sent drop tmp write data msg for key: {} to cache: {}", msg.getKey(), child.path().name());
+                }
+                for (ActorRef child : L2_caches) {
+                    DropTmpWriteDataMsg dropTmpWriteDataMsg = new DropTmpWriteDataMsg(msg.getKey());
+                    child.tell(dropTmpWriteDataMsg, getSelf());
+                    log.info("[DATABASE " + id + "] Sent drop tmp write data msg for key: {} to cache: {} (L2 cache connected directly)", msg.getKey(), child.path().name());
+                }
+
+
 
 
                 log.info("[DATABASE " + id + "] Aborting critical write operation for key: {} and request id: {}", msg.getKey(), msg.getRequestId());
@@ -679,10 +700,13 @@ public class Database extends AbstractActor {
                 // received either from L1 cache (default) or L2 cache (connected)
                 log.info("[DATABASE " + id + "] Received timeout msg for confirmed write operation");
 
+                // since at this point we received all accepted write responses
+                // we are sure that all caches have cleared the old value for the key involved
+                // we are also sure that tmpWriteData for that key has been cleared
+                // so the crit_write requirement is satisfied
+                // but maybe some caches did not update the new value (not a problem)
 
-                // crit_write abortion procedure
-                // TODO: similar to accepted write
-
+                // send crit write response
 
                 break;
             default:

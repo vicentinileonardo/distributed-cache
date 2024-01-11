@@ -289,23 +289,29 @@ public class DistributedCacheSystem {
         client.tell(msg, ActorRef.noSender());
     }
 
-    private void sendWriteMsgs(int clientId) {
+    private void sendWriteMsgs(int clientId, int key, int value) {
         ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
 
         // generate a random number
         Random rndm = new Random();
 
-        // this will generate a random number between 0 and
-        // HashSet.size - 1
-        int rndmNumber = rndm.nextInt(this.clientActors.size());
+        if (clientId == -1) {
+            // this will generate a random number between 0 and
+            // HashSet.size - 1
+            clientId = rndm.nextInt(this.clientActors.size());
+        }
 
-        ActorRef client = tmpArray[rndmNumber];
-        //ActorRef client = tmpArray[clientId];
+        ActorRef client = tmpArray[clientId];
 
-        int rndmKey = rndm.nextInt(10);
-        int rndmValue = rndm.nextInt(100);
-        //StartWriteMsg msg = new StartWriteMsg(rndmKey, rndmValue);
-        StartWriteMsg msg = new StartWriteMsg(4, rndmValue);
+        if(key == -1) {
+            key = rndm.nextInt(10);
+        }
+
+        if(value == -1) {
+            value = rndm.nextInt(10);
+        }
+
+        Message.StartWriteMsg msg = new Message.StartWriteMsg(key, value);
         client.tell(msg, ActorRef.noSender());
     }
 
@@ -331,23 +337,29 @@ public class DistributedCacheSystem {
         client.tell(msg, ActorRef.noSender());
     }
 
-    private void sendCritWriteMsgs(int clientId) {
+    private void sendCritWriteMsgs(int clientId, int key, int value) {
         ActorRef[] tmpArray = this.clientActors.toArray(new ActorRef[this.clientActors.size()]);
 
         // generate a random number
         Random rndm = new Random();
 
-        // this will generate a random number between 0 and
-        // HashSet.size - 1
-        int rndmNumber = rndm.nextInt(this.clientActors.size());
+        if (clientId == -1) {
+            // this will generate a random number between 0 and
+            // HashSet.size - 1
+            clientId = rndm.nextInt(this.clientActors.size());
+        }
 
-        ActorRef client = tmpArray[rndmNumber];
-        //ActorRef client = tmpArray[clientId];
+        ActorRef client = tmpArray[clientId];
 
-        int rndmKey = rndm.nextInt(10);
-        int rndmValue = rndm.nextInt(100);
-        //StartWriteMsg msg = new StartWriteMsg(rndmKey, rndmValue);
-        StartCriticalWriteRequestMsg msg = new StartCriticalWriteRequestMsg(4, rndmValue);
+        if(key == -1) {
+            key = rndm.nextInt(10);
+        }
+
+        if(value == -1) {
+            value = rndm.nextInt(10);
+        }
+
+        Message.StartCriticalWriteRequestMsg msg = new Message.StartCriticalWriteRequestMsg(key, value);
         client.tell(msg, ActorRef.noSender());
     }
 
@@ -409,7 +421,7 @@ public class DistributedCacheSystem {
                 .bind(concat);
 
 
-
+        /*
         distributedCacheSystem.sendReadMsgs(0, 1);
         sleep(10000);
         distributedCacheSystem.sendReadMsgs(0, 2);
@@ -441,7 +453,7 @@ public class DistributedCacheSystem {
         distributedCacheSystem.sendReadMsgs(4, 5);
         sleep(10000);
         distributedCacheSystem.sendReadMsgs(4, 6);
-
+        */
 
         //distributedCacheSystem.sendWriteMsgs(1);
         //sleep(1000);
@@ -451,7 +463,7 @@ public class DistributedCacheSystem {
         //sleep(1000000);
         //distributedCacheSystem.sendReadMsgs(0, 6);
 
-        //distributedCacheSystem.sendCritWriteMsgs(3);
+        distributedCacheSystem.sendCritWriteMsgs(3, 5, 99);
 
 
 

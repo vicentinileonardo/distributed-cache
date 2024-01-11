@@ -12,7 +12,7 @@ clients:
     - type: !!str write
       value: !!int 500
     - type: !!str crit_write
-      value: !!int 15000
+      value: !!int 1000
     - type: !!str connection
       value: !!int 10
 l2Caches:
@@ -26,7 +26,7 @@ l2Caches:
     - type: !!str write
       value: !!int 10
     - type: !!str crit_write
-      value: !!int 1200
+      value: !!int 50
     - type: !!str apply_write
       value: !!int 15
 l1Caches:
@@ -40,7 +40,7 @@ l1Caches:
     - type: !!str write
       value: !!int 10
     - type: !!str crit_write
-      value: !!int 1200
+      value: !!int 120000
     - type: !!str response_data_recover
       value: !!int 80
 
@@ -49,6 +49,6 @@ database:
     - type: !!str refill
       value: !!int 10
     - type: !!str accepted_write
-      value: !!int 80
+      value: !!int 50
     - type: !!str confirmed_write
-      value: !!int 735
+      value: !!int 7000000

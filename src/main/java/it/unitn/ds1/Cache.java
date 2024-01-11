@@ -207,9 +207,12 @@ public class Cache extends AbstractActor{
         clearData();
         clearRequests();
 
+        this.tmpWriteData.clear();
+
         //change the behavior of the actor to the crashed one
         getContext().become(crashed());
         log.info("[{} CACHE {}] Cache crashed!", this.type_of_cache.toString(), String.valueOf(this.id));
+        return;
     }
 
     public boolean isCrashed(){
@@ -439,6 +442,8 @@ public class Cache extends AbstractActor{
                     log.info("[{} CACHE {}] Forwarded read request to {}", this.type_of_cache.toString(), String.valueOf(this.id), getParent().path().name());
                 } else if (request.getType().equals("crit_read")) {
 
+                    // like read, note that the db could have already been asked the same request from the crashed L1 cache
+                    // but the response never arrived to the L2 cache (due to the L1 cache crash), so it's ok to ask again
                     getParent().tell(new CriticalReadRequestMsg(request.getKey(), path, request.getRequestId()), getSelf());
                     log.info("[{} CACHE {}] Forwarded critical read request to {}", this.type_of_cache.toString(), String.valueOf(this.id), getParent().path().name());
                 } else if (request.getType().equals("crit_write")) {
@@ -512,6 +517,7 @@ public class Cache extends AbstractActor{
                 .match(AcceptedWriteMsg.class, this::onAcceptedWriteMsg)
                 .match(ApplyWriteMsg.class, this::onApplyWriteMsg)
                 .match(ConfirmedWriteMsg.class, this::onConfirmedWriteMsg)
+                .match(DropTmpWriteDataMsg.class, this::onDropTmpWriteDataMsg)
 
                 .match(RequestConnectionMsg.class, this::onRequestConnectionMsg)
                 .match(ResponseConnectionMsg.class, this::onResponseConnectionMsg)
@@ -1066,6 +1072,19 @@ public class Cache extends AbstractActor{
 
         log.info("[{} CACHE {}] Received critical write request msg; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), criticalWriteRequestMsg.getKey(), criticalWriteRequestMsg.getValue());
 
+        /*
+        System.out.println(getCacheType());
+        System.out.println(getID());
+
+        if (getCacheType() == TYPE.L1){
+            if(getID() == 1){
+                System.out.println("CRASH_CRASH");
+                crash();
+                return;
+            }
+        }
+        */
+
         addNetworkDelay();
         log.info("[{} CACHE {}] Added network delay", getCacheType().toString(), String.valueOf(getID()));
 
@@ -1171,9 +1190,16 @@ public class Cache extends AbstractActor{
             // if yes, then a concurrent critical write is on
             // should never happen
             // if the db has started a critical write for the same key, it refuses the critical write (or retry at the end of the entire operation maybe)
+            return;
         } else {
             // if no, then store the proposed value in a temporary structure
             tmpWriteData.put(proposedWriteMsg.getKey(), proposedWriteMsg.getValue());
+            log.info("[{} CACHE {}] Stored proposed key-value {}:{} in tmpWriteData", getCacheType().toString(), String.valueOf(getID()), proposedWriteMsg.getKey(), proposedWriteMsg.getValue());
+
+            // clear the key on this.data
+            this.data.remove(proposedWriteMsg.getKey());
+            log.info("[{} CACHE {}] Removed key {} from data", getCacheType().toString(), String.valueOf(getID()), proposedWriteMsg.getKey());
+
         }
 
         // if the cache is of type L1
@@ -1238,9 +1264,15 @@ public class Cache extends AbstractActor{
         if (childrenToAcceptWriteByKey.get(msg.getKey()).isEmpty()) {
             log.info("[{} CACHE {}] All children have responded", getCacheType().toString(), String.valueOf(getID()));
 
+            // on L1 caches we clear this.data only if all the children have responded
+            // reason: if a L2 cache do not respond, the db will timeout and the crit_write will be aborted
+            // therefore in this way, we do not throw away the data for a bad crit_write caused by our children
+            // we try to minimize the data loss for a bad crit_write
+            this.data.remove(msg.getKey());
+            log.info("[{} CACHE {}] Removed key {} from data", getCacheType().toString(), String.valueOf(getID()), msg.getKey());
+
             // all children have responded, send AcceptedWriteMsg to database
             // AcceptedWrite must contain the set of caches involved in this portion of the tree
-            // assumption: all children have responded
             AcceptedWriteMsg acceptedWriteMsg = new AcceptedWriteMsg(msg.getKey(), msg.getValue(), msg.getRequestId());
             acceptedWriteMsg.addCaches(childrenAcceptedWriteByKey.get(msg.getKey()));
             getDatabase().tell(acceptedWriteMsg, getSelf());
@@ -1339,6 +1371,23 @@ public class Cache extends AbstractActor{
 
             getDatabase().tell(confirmedWriteMsg, getSelf());
             log.info("[{} CACHE {}] Sent confirmed write msg to {}", getCacheType().toString(), String.valueOf(getID()), getDatabase().path().name());
+        }
+    }
+
+    public void onDropTmpWriteDataMsg(DropTmpWriteDataMsg msg){
+        log.info("[{} CACHE {}] Received drop tmp write data msg", getCacheType().toString(), String.valueOf(getID()));
+
+        addNetworkDelay();
+        log.info("[{} CACHE {}] Added network delay", getCacheType().toString(), String.valueOf(getID()));
+
+        tmpWriteData.remove(msg.getKey());
+        log.info("[{} CACHE {}] Removed key:{} from temporary write structure", getCacheType().toString(), String.valueOf(getID()), msg.getKey());
+
+        if(getCacheType() == TYPE.L1){
+            for(ActorRef child : getChildren()){
+                child.tell(msg, getSelf());
+                log.info("[{} CACHE {}] Sent drop tmp write data msg to {}", getCacheType().toString(), String.valueOf(getID()), child.path().name());
+            }
         }
     }
 

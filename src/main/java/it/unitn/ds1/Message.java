@@ -85,6 +85,19 @@ public class Message {
 
     }
 
+    public static class DropTmpWriteDataMsg implements Serializable{
+
+        private final int key;
+
+        public DropTmpWriteDataMsg(int key){
+            this.key = key;
+        }
+
+        public int getKey() {
+            return this.key;
+        }
+    }
+
     public static class InfoMsg implements Serializable{
         public InfoMsg() {}
     }

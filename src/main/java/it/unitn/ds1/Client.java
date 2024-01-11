@@ -35,7 +35,7 @@ public class Client extends AbstractActor {
         private final int key;
         private int value;
         private boolean finished;
-        //private boolean success; //maybe not needed
+        private boolean success;
         private final long startTime = System.currentTimeMillis();
         private long endTime;
         private long firstRequestId; // equal to the id of the first request sent for this operation
@@ -94,8 +94,12 @@ public class Client extends AbstractActor {
             this.finished = finished;
         }
 
+        public void setSuccess(boolean success) {
+            this.success = success;
+        }
+
         public String toString() {
-            return "{ Operation: " + operation + ", Key: " + key + ", Value: " + value + ", Finished: " + finished  + ", Start Time: " + startTime + ", End Time: " + endTime + ", Duration: " + getDuration() + "ms " + ", First Request Id: " + firstRequestId + " }";
+            return "{ Operation: " + operation + ", Key: " + key + ", Value: " + value + ", Finished: " + finished  + ", Success: " + success + ", Start Time: " + startTime + ", End Time: " + endTime + ", Duration: " + getDuration() + " }";
         }
 
     }
@@ -258,7 +262,7 @@ public class Client extends AbstractActor {
             //sendRequest(); //maybe not needed
             log.info("[CLIENT " + id + "] Sent write request msg! to " + getParent().path().name());
 
-            //startTimeout("write", getParent().path().name());
+            startTimeout("write", requestId, getParent().path().name());
 
         } else {
             //if last operation is not finished
@@ -289,7 +293,7 @@ public class Client extends AbstractActor {
             getParent().tell(msg, getSelf());
             log.info("[CLIENT " + id + "] Sent critical read request msg! to " + getParent().path().name());
 
-            //startTimeout("crit_read", getParent().path().name());
+            startTimeout("crit_read", requestId, getParent().path().name());
 
         } else {
             //if last operation is not finished
@@ -323,7 +327,7 @@ public class Client extends AbstractActor {
             //sendRequest(); //maybe not needed
             log.info("[CLIENT " + id + "] Sent critical write request msg! to " + getParent().path().name());
 
-            //startTimeout("crit_write", getParent().path().name());
+            startTimeout("crit_write", requestId, getParent().path().name());
 
         } else {
             //if last operation is not finished
@@ -625,7 +629,7 @@ public class Client extends AbstractActor {
 
     private void onStartCriticalWriteRequestMsg(StartCriticalWriteRequestMsg msg){
         log.info("[CLIENT " + id + "] Received critical write msg request!");
-        int delay = 0;
+        int delay = 20;
         sendCriticalWriteRequestMsg(msg.getKey(), msg.getValue(), delay);
     }
 
@@ -635,6 +639,7 @@ public class Client extends AbstractActor {
         operations.get(operations.size() - 1).setValue(msg.getValue());
         operations.get(operations.size() - 1).setFinished(true);
         operations.get(operations.size() - 1).setEndTime();
+        operations.get(operations.size() - 1).setSuccess(true);
         log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
         log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
     }
@@ -645,6 +650,7 @@ public class Client extends AbstractActor {
         operations.get(operations.size() - 1).setValue(msg.getValue());
         operations.get(operations.size() - 1).setFinished(true);
         operations.get(operations.size() - 1).setEndTime();
+        operations.get(operations.size() - 1).setSuccess(true);
         log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
         log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
     }
@@ -657,7 +663,7 @@ public class Client extends AbstractActor {
         operations.get(operations.size() - 1).setEndTime();
         log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
         log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
-        // when interacting with the same cache (l2 cache)
+        // when interacting with the SAME cache (l2 cache)
         // the client is guaranteed not to read a value older than the last write
     }
 
@@ -671,13 +677,13 @@ public class Client extends AbstractActor {
             log.info("[CLIENT " + id + "] Critical write was ACCEPTED" );
         }
 
-
         // print updated caches
         log.info("[CLIENT " + id + "] Updated caches: " + msg.printUpdatedCaches());
 
         operations.get(operations.size() - 1).setValue(msg.getValue());
         operations.get(operations.size() - 1).setFinished(true);
         operations.get(operations.size() - 1).setEndTime();
+        operations.get(operations.size() - 1).setSuccess(!msg.isRefused());
         log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
         log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
 
