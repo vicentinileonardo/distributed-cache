@@ -615,10 +615,10 @@ public class Client extends AbstractActor {
     }
 
     // ----------WRITE MESSAGES LOGIC----------
-    private void onStartWriteMsg(StartWriteMsg msg) { //TODO: change name according to the read
+    private void onStartWriteMsg(StartWriteMsg msg) {
         log.info("[CLIENT " + id + "] Received write msg request!");
         int delay = 0;
-        sendWriteRequestMsg(msg.key, msg.value, delay); // TODO: CCHANGE TO MSG.GETKEY, PRIVATE VARIABLES
+        sendWriteRequestMsg(msg.getKey(), msg.getValue(), delay);
     }
 
     private void onStartCriticalReadRequestMsg(StartCriticalReadRequestMsg msg){

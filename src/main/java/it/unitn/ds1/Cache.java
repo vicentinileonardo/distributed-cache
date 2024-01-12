@@ -1197,6 +1197,7 @@ public class Cache extends AbstractActor{
 
         log.info("[{} CACHE {}] Received proposed write msg; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), proposedWriteMsg.getKey(), proposedWriteMsg.getValue());
 
+        /*
         System.out.println(getCacheType());
         System.out.println(getID());
 
@@ -1207,6 +1208,7 @@ public class Cache extends AbstractActor{
                 return;
             }
         }
+        */
 
         addNetworkDelay();
         log.info("[{} CACHE {}] Added network delay", getCacheType().toString(), String.valueOf(getID()));
@@ -1369,7 +1371,7 @@ public class Cache extends AbstractActor{
         addNetworkDelay();
         log.info("[{} CACHE {}] Added network delay", getCacheType().toString(), String.valueOf(getID()));
 
-
+        /*
         System.out.println(getCacheType());
         System.out.println(getID());
 
@@ -1380,6 +1382,7 @@ public class Cache extends AbstractActor{
                 return;
             }
         }
+        */
 
 
         //System.out.println("before removal , childrenToConfirmWriteByKey: " + childrenToConfirmWriteByKey.toString());
@@ -1434,11 +1437,11 @@ public class Cache extends AbstractActor{
 //            return;
 //        }
 //        addChild(tmp);
-        if ((this.type_of_cache == TYPE.L1 && !Objects.equals(msg.type, "L2")) ||
-                (this.type_of_cache == TYPE.L2 && !Objects.equals(msg.type, "client"))){
+        if ((this.type_of_cache == TYPE.L1 && !Objects.equals(msg.getType(), "L2")) ||
+                (this.type_of_cache == TYPE.L2 && !Objects.equals(msg.getType(), "client"))){
             throw new InvalidMessageException("Message to wrong destination!");
         }
-        addChild(msg.id);
+        addChild(msg.getId());
         log.info("[{} CACHE {}] -------------------------------------------------------------- Added {} as a child", getCacheType(), getID(), getSender().path().name());
     }
 

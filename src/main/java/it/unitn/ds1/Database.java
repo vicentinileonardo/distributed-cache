@@ -297,10 +297,10 @@ public class Database extends AbstractActor {
 //            return;
 //        }
 //        addL1_cache(tmp);
-        if (!Objects.equals(msg.type, "L1")) {
+        if (!Objects.equals(msg.getType(), "L1")) {
             throw new InvalidMessageException("Message to wrong destination!");
         }
-        addL1_cache(msg.id);
+        addL1_cache(msg.getId());
         log.info("[DATABASE " + id + "] Added " + getSender().path().name() + " as a child");
     }
 
@@ -375,12 +375,12 @@ public class Database extends AbstractActor {
 
     // ----------WRITE MESSAGES LOGIC----------
     public void onWriteRequestMsg(WriteRequestMsg msg) {
-        log.info("[DATABASE " + id + "] Received a write request for key " + msg.key + " with value " + msg.value);
+        log.info("[DATABASE " + id + "] Received a write request for key " + msg.getKey() + " with value " + msg.getValue() + " from cache " + getSender().path().name());
 
         putData(msg.getKey(), msg.getValue());
-        log.info("[DATABASE " + id + "] Wrote key " + msg.key + " with value " + msg.value);
+        log.info("[DATABASE " + id + "] Wrote key " + msg.getKey() + " with value " + msg.getValue());
 
-        int delay = 40;
+        int delay = 0;
         addDelayInSeconds(delay);
         log.info("[DATABASE " + id + "] Delayed write request for key " + msg.getKey() + " from cache " + getSender().path().name() + " by " + delay + " seconds");
 
@@ -590,7 +590,7 @@ public class Database extends AbstractActor {
         System.out.println("[database] after first involvedcachescritwrites: " + involvedCachesCritWrites.toString());
 
         //add L2 caches to involvedCachesCritWrites
-        log.info("[DATABASE " + id + "] L2 caches INVOLVED" + confirmedWriteMsg.getCaches());
+        log.info("[DATABASE " + id + "] Caches INVOLVED" + confirmedWriteMsg.getCaches());
 
         // check every time if all caches have responded for that specific key
         if (childrenToConfirmWriteByKey.get(confirmedWriteMsg.getKey()).isEmpty()) {

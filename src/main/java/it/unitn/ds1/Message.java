@@ -9,12 +9,20 @@ public class Message {
 
     // ----------GENERAL MESSAGES----------
     public static class InitMsg implements Serializable{
-        public final ActorRef id;
-        public final String type;
+        private final ActorRef id;
+        private final String type;
 
         public InitMsg(ActorRef id, String type) {
             this.id = id;
             this.type = type;
+        }
+
+        public ActorRef getId() {
+        	return this.id;
+        }
+
+        public String getType() {
+        	return this.type;
         }
     }
 
@@ -121,6 +129,9 @@ public class Message {
         }
 
     }
+
+    public static class InfoItemsMsg implements Serializable {}
+
 
     // ----------CRASH RELATED MESSAGES----------
     public static class CrashMsg implements Serializable{
@@ -396,71 +407,29 @@ public class Message {
     }
 
 
-
     // ----------WRITE MESSAGES----------
-    public static class WriteResponseMsg implements Serializable {
+    public static class StartWriteMsg implements Serializable{
         private final int key;
         private final int value;
-        public Stack<ActorRef> path;
-        private final long requestId;
-
-        public WriteResponseMsg(int key, int value, Stack<ActorRef> path, long requestId) {
-            this.key = key;
-            this.value = value;
-            this.path = path;
-            this.requestId = requestId;
-        }
-
-        public int getKey() {
-            return key;
-        }
-
-        public int getValue() {
-            return value;
-        }
-
-        public long getRequestId() {
-            return requestId;
-        }
-
-        public Stack<ActorRef> getPath() {
-            return path;
-        }
-
-        public int getPathSize() {
-            return path.size();
-        }
-
-        // Print the path
-        public String printPath() {
-            StringBuilder sb = new StringBuilder();
-            sb.append("Current path of message: [ ");
-            for (ActorRef actor : path) {
-                sb.append(actor.path().name()).append(" ");
-            }
-            sb.append(" ]");
-            return sb.toString();
-        }
-    }
-
-
-
-
-
-    public static class StartWriteMsg implements Serializable{ //TODO: change into private with getters
-        public final int key;
-        public final int value;
 
         public StartWriteMsg(int key, int value) {
             this.key = key;
             this.value = value;
         }
+
+        public int getKey() {
+            return this.key;
+        }
+
+        public int getValue() {
+            return this.value;
+        }
     }
 
     public static class WriteRequestMsg implements Serializable{
-        public final int key;
-        public final int value;
-        public Stack<ActorRef> path;
+        private final int key;
+        private final int value;
+        private Stack<ActorRef> path;
         private final long requestId;
 
         public WriteRequestMsg(int key, int value, Stack<ActorRef> path, long requestId) {
@@ -510,10 +479,54 @@ public class Message {
         }
     }
 
+    public static class WriteResponseMsg implements Serializable {
+        private final int key;
+        private final int value;
+        private Stack<ActorRef> path;
+        private final long requestId;
 
-    public static class FillMsg implements Serializable{ //TODO: private variables
-        public final int key;
-        public final int value;
+        public WriteResponseMsg(int key, int value, Stack<ActorRef> path, long requestId) {
+            this.key = key;
+            this.value = value;
+            this.path = path;
+            this.requestId = requestId;
+        }
+
+        public int getKey() {
+            return key;
+        }
+
+        public int getValue() {
+            return value;
+        }
+
+        public long getRequestId() {
+            return requestId;
+        }
+
+        public Stack<ActorRef> getPath() {
+            return path;
+        }
+
+        public int getPathSize() {
+            return path.size();
+        }
+
+        // Print the path
+        public String printPath() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Current path of message: [ ");
+            for (ActorRef actor : path) {
+                sb.append(actor.path().name()).append(" ");
+            }
+            sb.append(" ]");
+            return sb.toString();
+        }
+    }
+
+    public static class FillMsg implements Serializable{
+        private final int key;
+        private final int value;
 
         public FillMsg(int key, int value) {
             this.key = key;
@@ -528,9 +541,6 @@ public class Message {
             return value;
         }
     }
-
-    public static class InfoItemsMsg implements Serializable {}
-
 
 
     // ----------CRITICAL READ MESSAGES----------
@@ -651,6 +661,8 @@ public class Message {
 
     }
 
+
+    // ----------CRITICAL READ MESSAGES----------
     public static class StartCriticalWriteRequestMsg implements Serializable {
         private final int key;
         private final int value;
@@ -736,7 +748,7 @@ public class Message {
     public static class CriticalWriteResponseMsg implements Serializable {
         private final int key;
         private final int value;
-        public Stack<ActorRef> path;
+        private Stack<ActorRef> path;
         private final long requestId;
         private final boolean isRefused;
 
@@ -939,13 +951,6 @@ public class Message {
         }
 
     }
-
-
-
-
-
-
-
 
 
 }

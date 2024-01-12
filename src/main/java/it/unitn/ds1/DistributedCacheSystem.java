@@ -454,8 +454,8 @@ public class DistributedCacheSystem {
         sleep(10000);
         distributedCacheSystem.sendReadMsgs(4, 6);
         */
-        //distributedCacheSystem.sendReadMsgs(4, 4);
-        //sleep(10000);
+        distributedCacheSystem.sendReadMsgs(4, 4);
+        sleep(10000);
         distributedCacheSystem.sendWriteMsgs(1, 4, 7);
         //sleep(1000);
         //distributedCacheSystem.sendReadMsgs(2);
