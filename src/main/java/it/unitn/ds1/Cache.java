@@ -585,6 +585,7 @@ public class Cache extends AbstractActor{
                 log.info("[{} CACHE {}] Children sources updated: {}", getCacheType(), getID(), childrenSources.toString());
                 return;
             }
+            return;
         }
 
         if (!this.requests.containsKey(msg.getRequestId())) {
@@ -781,9 +782,12 @@ public class Cache extends AbstractActor{
             getParent().tell(upperReadRequestMsg, getSelf());
             log.info("[{} CACHE {}] Sent read request msg to {}", getCacheType().toString(), String.valueOf(getID()), getParent().path().name());
 
-            startTimeout("read", upperReadRequestMsg.getRequestId());
-            log.info("[{} CACHE {}] Started timeout for read request msg with id {}", getCacheType().toString(), String.valueOf(getID()), upperReadRequestMsg.getRequestId());
-
+            if (getCacheType() == TYPE.L2) {
+                startTimeout("read", upperReadRequestMsg.getRequestId());
+                log.info("[{} CACHE {}] Started timeout for read request msg with id {}", getCacheType().toString(), String.valueOf(getID()), upperReadRequestMsg.getRequestId());
+            } else {
+                log.info("[{} CACHE {}] L1 cache, No timeout needed for read request", getCacheType().toString(), String.valueOf(getID()));
+            }
         }
     }
 
@@ -882,9 +886,15 @@ public class Cache extends AbstractActor{
         parent.tell(upperWriteRequestMsg, getSelf());
         log.info("[{} CACHE {}] Sent write msg to {}", getCacheType().toString(), String.valueOf(getID()), getParent().path().name());
 
-        startTimeout("write", upperWriteRequestMsg.getRequestId());
-        log.info("[{} CACHE {}] Started timeout for write request", getCacheType().toString(), String.valueOf(getID()));
+        if (getCacheType() == TYPE.L2){
+            startTimeout("write", upperWriteRequestMsg.getRequestId());
+            log.info("[{} CACHE {}] Started timeout for write request", getCacheType().toString(), String.valueOf(getID()));
+        } else {
+            log.info("[{} CACHE {}] L1 cache, No timeout needed for write request", getCacheType().toString(), String.valueOf(getID()));
 
+            // crash just after sending message to db
+            //crash();
+        }
     }
 
     private void onWriteResponseMsg(WriteResponseMsg writeResponseMsg){
@@ -1014,9 +1024,12 @@ public class Cache extends AbstractActor{
         getParent().tell(upperCriticalReadRequestMsg, getSelf());
         log.info("[{} CACHE {}] Sent read request msg to {}", getCacheType().toString(), String.valueOf(getID()), getParent().path().name());
 
-        startTimeout("crit_read", upperCriticalReadRequestMsg.getRequestId());
-        log.info("[{} CACHE {}] Started timeout for critical read request with id {}", getCacheType().toString(), String.valueOf(getID()), upperCriticalReadRequestMsg.getRequestId());
-
+        if (getCacheType() == TYPE.L2) {
+            startTimeout("crit_read", upperCriticalReadRequestMsg.getRequestId());
+            log.info("[{} CACHE {}] Started timeout for critical read request with id {}", getCacheType().toString(), String.valueOf(getID()), upperCriticalReadRequestMsg.getRequestId());
+        } else {
+            log.info("[{} CACHE {}] L1 cache, No timeout needed for crit_read request", getCacheType().toString(), String.valueOf(getID()));
+        }
     }
 
     //response from database to l1 cache
@@ -1116,9 +1129,12 @@ public class Cache extends AbstractActor{
         parent.tell(upperCriticalWriteRequestMsg, getSelf());
         log.info("[{} CACHE {}] Sent critical write msg to {}", getCacheType().toString(), String.valueOf(getID()), getParent().path().name());
 
-        startTimeout("crit_write", upperCriticalWriteRequestMsg.getRequestId());
-        log.info("[{} CACHE {}] Started timeout for critical write request", getCacheType().toString(), String.valueOf(getID()));
-
+        if (getCacheType() == TYPE.L2) {
+            startTimeout("crit_write", upperCriticalWriteRequestMsg.getRequestId());
+            log.info("[{} CACHE {}] Started timeout for critical write request", getCacheType().toString(), String.valueOf(getID()));
+        } else {
+            log.info("[{} CACHE {}] L1 cache, No timeout needed for crit_write request", getCacheType().toString(), String.valueOf(getID()));
+        }
     }
 
     public void onCriticalWriteResponseMsg(CriticalWriteResponseMsg criticalWriteResponseMsg){
@@ -1180,6 +1196,17 @@ public class Cache extends AbstractActor{
     public void onProposedWriteMsg(ProposedWriteMsg proposedWriteMsg){
 
         log.info("[{} CACHE {}] Received proposed write msg; key:{}, value:{}", getCacheType().toString(), String.valueOf(getID()), proposedWriteMsg.getKey(), proposedWriteMsg.getValue());
+
+        System.out.println(getCacheType());
+        System.out.println(getID());
+
+        if (getCacheType() == TYPE.L1){
+            if(getID() == 1){
+                System.out.println("CRASH_CRASH");
+                crash();
+                return;
+            }
+        }
 
         addNetworkDelay();
         log.info("[{} CACHE {}] Added network delay", getCacheType().toString(), String.valueOf(getID()));
@@ -1331,14 +1358,8 @@ public class Cache extends AbstractActor{
             getSender().tell(confirmedWriteMsg, getSelf());
             log.info("[{} CACHE {}] Sent confirmed write msg to {}", getCacheType().toString(), String.valueOf(getID()), getSender().path().name());
 
-            // start a specific timeout, waiting for the apply write msg
-            // this l2 cache could be connected either to a l1 cache or to the database
-            // for now, the timeout is dealt by the database only
-            //startTimeout("apply_write", );
         }
 
-
-        // if l2 cache, send confirmed write to sender
     }
 
     // only l1 caches receive this message (or the database)
@@ -1347,6 +1368,19 @@ public class Cache extends AbstractActor{
 
         addNetworkDelay();
         log.info("[{} CACHE {}] Added network delay", getCacheType().toString(), String.valueOf(getID()));
+
+
+        System.out.println(getCacheType());
+        System.out.println(getID());
+
+        if (getCacheType() == TYPE.L1){
+            if(getID() == 1){
+                System.out.println("CRASH_CRASH");
+                crash();
+                return;
+            }
+        }
+
 
         //System.out.println("before removal , childrenToConfirmWriteByKey: " + childrenToConfirmWriteByKey.toString());
         // remove from the set of caches that must respond to this cache

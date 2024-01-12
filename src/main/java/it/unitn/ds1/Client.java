@@ -661,6 +661,7 @@ public class Client extends AbstractActor {
         operations.get(operations.size() - 1).setValue(msg.getValue());
         operations.get(operations.size() - 1).setFinished(true);
         operations.get(operations.size() - 1).setEndTime();
+        operations.get(operations.size() - 1).setSuccess(true);
         log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
         log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
         // when interacting with the SAME cache (l2 cache)

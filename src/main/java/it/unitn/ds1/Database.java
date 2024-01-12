@@ -53,6 +53,10 @@ public class Database extends AbstractActor {
     private Map<Integer, Set<ActorRef>> childrenToConfirmWriteByKey = new HashMap<>();
     private Map<Integer, Set<ActorRef>> childrenConfirmedWriteByKey = new HashMap<>();
 
+    // this map is used to deal with timeouts of accepted write
+    // when the operation is accepted but still not confirmed
+    private Map<Long, Boolean> acceptedCritWrites = new HashMap<>();
+
     public Database(int id, List<TimeoutConfiguration> timeouts) {
         this.id = id;
         setTimeouts(timeouts);
@@ -376,6 +380,10 @@ public class Database extends AbstractActor {
         putData(msg.getKey(), msg.getValue());
         log.info("[DATABASE " + id + "] Wrote key " + msg.key + " with value " + msg.value);
 
+        int delay = 40;
+        addDelayInSeconds(delay);
+        log.info("[DATABASE " + id + "] Delayed write request for key " + msg.getKey() + " from cache " + getSender().path().name() + " by " + delay + " seconds");
+
         // notify all L1 caches
         sendWriteResponses(msg, L1_caches);
         log.info("[DATABASE " + id + "] Sending write responses to L1 caches");
@@ -517,6 +525,9 @@ public class Database extends AbstractActor {
             putData(acceptedWriteMsg.getKey(), acceptedWriteMsg.getValue());
             log.info("[DATABASE " + id + "] Added data to database: key:{}, value:{}", acceptedWriteMsg.getKey(), acceptedWriteMsg.getValue());
 
+            acceptedCritWrites.put(acceptedWriteMsg.getRequestId(), true);
+
+
             // send an apply write to all connected caches
 
             //print caches
@@ -650,6 +661,15 @@ public class Database extends AbstractActor {
                 // received either from L1 cache (default) or L2 cache (connected)
                 log.info("[DATABASE " + id + "] Received timeout msg for accepted write operation");
 
+                if(acceptedCritWrites.get(msg.getRequestId()) != null){
+                    if (acceptedCritWrites.get(msg.getRequestId())){
+                        log.info("[DATABASE " + id + "] Ignoring timeout msg for accepted write since crit_write has been accepted but it is still ongoing");
+                        return;
+                    }
+                } else {
+                    log.info("[DATABASE " + id + "] Crit write has not been accepted yet");
+                }
+
                 // crit_write will be aborted
                 // database did not addData
                 // some caches have accepted the crit_write
@@ -673,17 +693,15 @@ public class Database extends AbstractActor {
                 }
 
 
-
-
                 log.info("[DATABASE " + id + "] Aborting critical write operation for key: {} and request id: {}", msg.getKey(), msg.getRequestId());
 
                 // crit_write abortion procedure
 
-                CriticalWriteRequestMsg criticalWriteRequestMsg = ongoingCritWrites.remove(msg.getKey());
-                ActorRef child = criticalWriteRequestMsg.getLast();
+                CriticalWriteRequestMsg refusedCriticalWriteRequestMsg = ongoingCritWrites.remove(msg.getKey());
+                ActorRef child_1 = refusedCriticalWriteRequestMsg.getLast();
 
                 // send write response with value isRefused = true
-                CriticalWriteResponseMsg criticalWriteResponseMsg = new CriticalWriteResponseMsg(criticalWriteRequestMsg.getKey(), criticalWriteRequestMsg.getValue(), criticalWriteRequestMsg.getPath(), criticalWriteRequestMsg.getRequestId(), true);
+                CriticalWriteResponseMsg refusedCriticalWriteResponseMsg = new CriticalWriteResponseMsg(refusedCriticalWriteRequestMsg.getKey(), refusedCriticalWriteRequestMsg.getValue(), refusedCriticalWriteRequestMsg.getPath(), refusedCriticalWriteRequestMsg.getRequestId(), true);
 
                 ongoingCritWritesRequestId.remove(msg.getRequestId());
                 involvedCachesCritWrites.remove(msg.getKey());
@@ -692,8 +710,8 @@ public class Database extends AbstractActor {
                 childrenToConfirmWriteByKey.remove(msg.getKey());
                 childrenConfirmedWriteByKey.remove(msg.getKey());
 
-                child.tell(criticalWriteResponseMsg, getSelf());
-                log.info("[DATABASE " + id + "] Sending (NOT FULFILLED) write response to cache" + child.path().name());
+                child_1.tell(refusedCriticalWriteResponseMsg, getSelf());
+                log.info("[DATABASE " + id + "] Sending (NOT FULFILLED) write response to cache" + child_1.path().name());
 
                 break;
             case "confirmed_write":
@@ -704,9 +722,28 @@ public class Database extends AbstractActor {
                 // we are sure that all caches have cleared the old value for the key involved
                 // we are also sure that tmpWriteData for that key has been cleared
                 // so the crit_write requirement is satisfied
-                // but maybe some caches did not update the new value (not a problem)
+                // but maybe some caches did not update the new value (not a problem, since it is not a requirement)
 
                 // send crit write response
+                log.info("[DATABASE " + id + "] Aborting critical write operation for key: {} and request id: {}", msg.getKey(), msg.getRequestId());
+
+                // crit_write abortion procedure
+
+                CriticalWriteRequestMsg acceptedCriticalWriteRequestMsg = ongoingCritWrites.remove(msg.getKey());
+                ActorRef child_2 = acceptedCriticalWriteRequestMsg.getLast();
+
+                // send write response with value isRefused = true
+                CriticalWriteResponseMsg acceptedCriticalWriteResponseMsg = new CriticalWriteResponseMsg(acceptedCriticalWriteRequestMsg.getKey(), acceptedCriticalWriteRequestMsg.getValue(), acceptedCriticalWriteRequestMsg.getPath(), acceptedCriticalWriteRequestMsg.getRequestId(), false);
+
+                ongoingCritWritesRequestId.remove(msg.getRequestId());
+                involvedCachesCritWrites.remove(msg.getKey());
+                childrenToAcceptWriteByKey.remove(msg.getKey());
+                childrenAcceptedWriteByKey.remove(msg.getKey());
+                childrenToConfirmWriteByKey.remove(msg.getKey());
+                childrenConfirmedWriteByKey.remove(msg.getKey());
+
+                child_2.tell(acceptedCriticalWriteResponseMsg, getSelf());
+                log.info("[DATABASE " + id + "] Sending (FULFILLED) write response to cache" + child_2.path().name());
 
                 break;
             default:
