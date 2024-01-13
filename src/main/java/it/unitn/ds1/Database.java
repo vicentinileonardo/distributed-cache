@@ -17,9 +17,6 @@ public class Database extends AbstractActor {
 
     private int id;
 
-    //DEBUG ONLY: assumption that the database is always up
-    //private boolean crashed = false;
-
     private Map<Integer, Integer> data = new HashMap<>();
 
     // since the db and different type of caches have different interactions
@@ -32,7 +29,9 @@ public class Database extends AbstractActor {
     private Random rnd = new Random();
     private String classString = String.valueOf(getClass());
 
-    // critical write, if a critical write for a specific key is ongoing, no write for the same key is allowed
+    // ----------CRITICAL WRITE SUPPORT DATA STRUCTURES----------
+
+    // critical write, if a critical write for a specific key is ongoing, no critical write for the same key is allowed
     // key -> CriticalWriteRequestMsg
     // we store the original critical write request message to be able to send the response back to the client
     // recovering the path and the request identifier
@@ -41,10 +40,8 @@ public class Database extends AbstractActor {
     // set to store requestId (of type long) of ongoing critical writes
     private Set<Long> ongoingCritWritesRequestId = new HashSet<>();
 
-
     // map to store the caches involved in a critical write for a specific key
     // assumption: a cache can be involved in a critical write for a specific key only once at a time
-    // TODO: check if this behaviour is already guaranteed
     private Map<Integer, Set<ActorRef>> involvedCachesCritWrites = new HashMap<>();
 
     // "children" because could be L1 or L2 caches
@@ -56,6 +53,7 @@ public class Database extends AbstractActor {
     // this map is used to deal with timeouts of accepted write
     // when the operation is accepted but still not confirmed
     private Map<Long, Boolean> acceptedCritWrites = new HashMap<>();
+
 
     public Database(int id, List<TimeoutConfiguration> timeouts) {
         this.id = id;
@@ -140,7 +138,6 @@ public class Database extends AbstractActor {
         this.timeouts.put(type, value);
     }
 
-
     private void startTimeout(String type, int key, long requestId) {
         log.info("[DATABASE " + id + "] Starting timeout for " + type + " request " + requestId);
         getContext().system().scheduler().scheduleOnce(
@@ -162,16 +159,14 @@ public class Database extends AbstractActor {
 
         log.info("[DATABASE " + id + "] Started!");
 
-        //CustomPrint.print(classString,"",  "", "Initial data in database " + id + ":");
         log.info("[DATABASE " + id + "] Initial data in database " + id + ":");
         for (Map.Entry<Integer, Integer> entry : getData().entrySet()) {
-            //CustomPrint.print(classString,"",  "", "Key = " + entry.getKey() + ", Value = " + entry.getValue());
             log.info("[DATABASE " + id + "] Key = " + entry.getKey() + ", Value = " + entry.getValue());
         }
     }
 
     public void populateDatabase() {
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 20; i++) {
             putData(i, rnd.nextInt(200));
         }
         //CustomPrint.debugPrint(classString, "Database " + id + " populated");
@@ -198,16 +193,19 @@ public class Database extends AbstractActor {
         return this.data;
     }
 
+
     // ----------SENDING LOGIC----------
 
     private void sendWriteResponses(WriteRequestMsg writeRequestMsg, Set<ActorRef> caches) {
 
         for (ActorRef cache : caches) {
+
             // if the cache is not the sender, send a fill message
             if (!cache.equals(getSender())){
                 cache.tell(new FillMsg(writeRequestMsg.getKey(), writeRequestMsg.getValue()), getSelf());
                 log.info("[DATABASE " + id + "] Sent a fill message to cache " + cache.path().name());
             } else { // if the cache is the sender, send a write response message
+
                 log.info("[DATABASE " + id + "] Sending a write response message to cache " + cache.path().name());
                 Stack<ActorRef> newPath = new Stack<>();
                 newPath.addAll(writeRequestMsg.getPath());
@@ -263,7 +261,9 @@ public class Database extends AbstractActor {
 
     }
 
+
     // ----------RECEIVE LOGIC----------
+
     // Here we define the mapping between the received message types and the database methods
     @Override
     public Receive createReceive() {
@@ -289,7 +289,8 @@ public class Database extends AbstractActor {
                 .build();
     }
 
-    // ----------INITIALIZATION MESSAGES LOGIC----------
+    // ----------INITIALIZATION MESSAGE LOGIC----------
+
     private void onInitMsg(Message.InitMsg msg) throws InvalidMessageException{
 //        ActorRef tmp = getSender();
 //        if (tmp == null){
@@ -304,37 +305,29 @@ public class Database extends AbstractActor {
         log.info("[DATABASE " + id + "] Added " + getSender().path().name() + " as a child");
     }
 
-    private void onRequestConnectionMsg(RequestConnectionMsg msg) {
-        if (!msg.getType().isEmpty()){
-            if (msg.getType().equals("L2")){
-                addL2_cache(getSender());
-                System.out.println("[db, onRequestConnectionMsg] added l2");
-                log.info("[DATABASE " + id + "] Added " + getSender().path().name() + " as a child");
-                getSender().tell(new ResponseConnectionMsg("ACCEPTED"), getSelf());
-                log.info("[DATABASE " + id + "] Sent a response connection message to " + getSender().path().name());
 
-                //print l2 caches
-                System.out.println("[db, onRequestConnectionMsg] l2 caches: " + getL2_caches().toString());
+    // ----------GENERAL DATABASE MESSAGES LOGIC----------
 
-                //print l1 caches
-                System.out.println("[db, onRequestConnectionMsg] l1 caches: " + getL1_caches().toString());
-
-
-
-            } else if (msg.getType().equals("L1")){
-                addL1_cache(getSender());
-                System.out.println("[db, onRequestConnectionMsg] added l1");
-                log.info("[DATABASE " + id + "] Added " + getSender().path().name() + " as a child");
-                getSender().tell(new ResponseConnectionMsg("ACCEPTED"), getSelf());
-                log.info("[DATABASE " + id + "] Sent a response connection message to " + getSender().path().name());
-            } else
-                log.info("[DATABASE " + id + "] Received a request connection message from " + getSender().path().name() + " with invalid type");
-        } else {
-            log.info("[DATABASE " + id + "] Received a request connection message from " + getSender().path().name() + " with empty type");
+    public void onCurrentDataMsg(CurrentDataMsg msg) {
+        log.info("[DATABASE " + id + "] Current data in database " + id + ":");
+        for (Map.Entry<Integer, Integer> entry : getData().entrySet()) {
+            log.info("[DATABASE " + id + "] Key = " + entry.getKey() + ", Value = " + entry.getValue());
         }
     }
 
-    // ----------READ MESSAGES LOGIC----------
+    // DEBUG ONLY: assumption is that the database is always up
+    public void onDropDatabaseMsg(DropDatabaseMsg msg) {
+        log.info("[DATABASE " + id + "] Database drop request");
+        clearData();
+        log.info("[DATABASE " + id + "] Database dropped");
+    }
+
+    public void onHealthCheckRequest(HealthCheckRequestMsg msg) {
+        HealthCheckResponseMsg new_msg = new HealthCheckResponseMsg(getData());
+        getSender().tell(new_msg, getSelf());
+    }
+
+    // ----------REQUESTS MESSAGES LOGIC----------
 
     public void onReadRequestMsg(Message.ReadRequestMsg readRequestMsg){
         log.info("[DATABASE " + id + "] Received a read request for key " + readRequestMsg.getKey() + " from cache " + getSender().path().name());
@@ -358,8 +351,7 @@ public class Database extends AbstractActor {
             //CustomPrint.debugPrint(classString, "Database " + id + " read value " + value + " for key " + readRequestMsg.getKey() + " and sent it to cache " + child.path().name());
             log.info("[DATABASE " + id + "] Read value " + value + " for key " + readRequestMsg.getKey() + " and sent it to cache " + child.path().name());
 
-        } else { // data not present, the scenario should not be possible
-            //as a matter of fact the client should pick key value that are stored maybe in a config file, to be sure the key is present at least in the database
+        } else { // data not present
             //for now, the database will send a response to the client with a value of -1
             ActorRef child = readRequestMsg.getLast();
             int value = -1;
@@ -372,15 +364,13 @@ public class Database extends AbstractActor {
         }
     }
 
-
-    // ----------WRITE MESSAGES LOGIC----------
     public void onWriteRequestMsg(WriteRequestMsg msg) {
         log.info("[DATABASE " + id + "] Received a write request for key " + msg.getKey() + " with value " + msg.getValue() + " from cache " + getSender().path().name());
 
         putData(msg.getKey(), msg.getValue());
         log.info("[DATABASE " + id + "] Wrote key " + msg.getKey() + " with value " + msg.getValue());
 
-        int delay = 0;
+        int delay = 10;
         addDelayInSeconds(delay);
         log.info("[DATABASE " + id + "] Delayed write request for key " + msg.getKey() + " from cache " + getSender().path().name() + " by " + delay + " seconds");
 
@@ -414,8 +404,7 @@ public class Database extends AbstractActor {
             child.tell(criticalReadResponseMsg, getSelf());
             log.info("[DATABASE " + id + "] Read value " + value + " for key " + criticalReadRequestMsg.getKey() + " and sent it to cache " + child.path().name());
 
-        } else { // data not present, the scenario should not be possible
-            //as a matter of fact the client should pick key value that are stored maybe in a config file, to be sure the key is present at least in the database
+        } else { // data not present
             //for now, the database will send a response to the client with a value of -1
             ActorRef child = criticalReadRequestMsg.getLast();
             int value = -1;
@@ -492,6 +481,8 @@ public class Database extends AbstractActor {
         log.info("[DATABASE " + id + "] Started timeout for proposed write request " + requestId);
 
     }
+
+    // ----------CRITICAL WRITE FINAL PHASE MESSAGES LOGIC----------
 
     public void onAcceptedWriteMsg(AcceptedWriteMsg acceptedWriteMsg) {
 
@@ -633,18 +624,7 @@ public class Database extends AbstractActor {
         }
     }
 
-    public void onRequestUpdatedDataMsg(RequestUpdatedDataMsg msg){
-        Map<Integer, Integer> tmpData = new HashMap<>();
-
-        // get the values for the keys in the message
-        for (Integer key : msg.getKeys()){
-            System.out.println("[database] onRequestUpdatedDataMsg, key: " + key);
-            tmpData.put(key, getData(key));
-        }
-
-        getSender().tell(new ResponseUpdatedDataMsg(tmpData), getSelf());
-        log.info("[DATABASE " + id + "] Sent a response updated data message to " + getSender().path().name());
-    }
+    // ----------DB TIMEOUT MESSAGES LOGIC----------
 
     private void onDbTimeoutMsg(DbTimeoutMsg msg) {
 
@@ -654,6 +634,8 @@ public class Database extends AbstractActor {
             log.info("[DATABASE " + id + "] Ignoring timeout msg for critical write request operation since it has already been fulfilled");
             return;
         }
+
+        // if operation is not fulfilled yet
 
         switch (msg.getType()) {
             case "accepted_write":
@@ -752,27 +734,49 @@ public class Database extends AbstractActor {
         }
     }
 
-    // ----------GENERAL DATABASE MESSAGES LOGIC----------
-    public void onCurrentDataMsg(CurrentDataMsg msg) {
-        //CustomPrint.debugPrint(classString, "Current data in database " + id + ":");
-        log.info("[DATABASE " + id + "] Current data in database " + id + ":");
-        for (Map.Entry<Integer, Integer> entry : getData().entrySet()) {
-            //CustomPrint.debugPrint(classString, "Key = " + entry.getKey() + ", Value = " + entry.getValue());
-            log.info("[DATABASE " + id + "] Key = " + entry.getKey() + ", Value = " + entry.getValue());
+    // ----------RECOVERY PROCEDURE MESSAGE LOGIC----------
+
+    public void onRequestUpdatedDataMsg(RequestUpdatedDataMsg msg){
+        Map<Integer, Integer> tmpData = new HashMap<>();
+
+        // get the values for the keys in the message
+        for (Integer key : msg.getKeys()){
+            System.out.println("[database] onRequestUpdatedDataMsg, key: " + key);
+            tmpData.put(key, getData(key));
+        }
+
+        getSender().tell(new ResponseUpdatedDataMsg(tmpData), getSelf());
+        log.info("[DATABASE " + id + "] Sent a response updated data message to " + getSender().path().name());
+    }
+
+    // ----------CONNECTION MESSAGE LOGIC----------
+
+    private void onRequestConnectionMsg(RequestConnectionMsg msg) {
+        if (!msg.getType().isEmpty()){
+            if (msg.getType().equals("L2")){
+                addL2_cache(getSender());
+                System.out.println("[db, onRequestConnectionMsg] added l2");
+                log.info("[DATABASE " + id + "] Added " + getSender().path().name() + " as a child");
+                getSender().tell(new ResponseConnectionMsg("ACCEPTED"), getSelf());
+                log.info("[DATABASE " + id + "] Sent a response connection message to " + getSender().path().name());
+
+                //print l2 caches
+                System.out.println("[db, onRequestConnectionMsg] l2 caches: " + getL2_caches().toString());
+
+                //print l1 caches
+                System.out.println("[db, onRequestConnectionMsg] l1 caches: " + getL1_caches().toString());
+
+            } else if (msg.getType().equals("L1")){ // for now, should never happen
+                addL1_cache(getSender());
+                System.out.println("[db, onRequestConnectionMsg] added l1");
+                log.info("[DATABASE " + id + "] Added " + getSender().path().name() + " as a child");
+                getSender().tell(new ResponseConnectionMsg("ACCEPTED"), getSelf());
+                log.info("[DATABASE " + id + "] Sent a response connection message to " + getSender().path().name());
+            } else
+                log.info("[DATABASE " + id + "] Received a request connection message from " + getSender().path().name() + " with invalid type");
+        } else {
+            log.info("[DATABASE " + id + "] Received a request connection message from " + getSender().path().name() + " with empty type");
         }
     }
 
-    // DEBUG ONLY: assumption is that the database is always up
-    public void onDropDatabaseMsg(DropDatabaseMsg msg) {
-        //CustomPrint.debugPrint(classString, "Database drop request");
-        log.info("[DATABASE " + id + "] Database drop request");
-        clearData();
-        //CustomPrint.debugPrint(classString, "Database " + id + " dropped");
-        log.info("[DATABASE " + id + "] Database dropped");
-    }
-
-    public void onHealthCheckRequest(HealthCheckRequestMsg msg) {
-        HealthCheckResponseMsg new_msg = new HealthCheckResponseMsg(getData());
-        getSender().tell(new_msg, getSelf());
-    }
 }

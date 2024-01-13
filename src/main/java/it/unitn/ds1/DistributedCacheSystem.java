@@ -454,17 +454,17 @@ public class DistributedCacheSystem {
         sleep(10000);
         distributedCacheSystem.sendReadMsgs(4, 6);
         */
-        distributedCacheSystem.sendReadMsgs(4, 4);
+        distributedCacheSystem.sendReadMsgs(4, 5);
         sleep(10000);
-        distributedCacheSystem.sendWriteMsgs(1, 4, 7);
-        //sleep(1000);
+        //distributedCacheSystem.sendWriteMsgs(1, 4, 7);
+        //sleep(2000);
         //distributedCacheSystem.sendReadMsgs(2);
         //sleep(50000);
-        //distributedCacheSystem.sendCritReadMsgs(0, 6);
-        //sleep(1000000);
-        //distributedCacheSystem.sendReadMsgs(0, 6);
+        distributedCacheSystem.sendCritReadMsgs(4, 5);
+        sleep(10000);
+        distributedCacheSystem.sendReadMsgs(4, 5);
 
-        //distributedCacheSystem.sendCritWriteMsgs(3, 5, 99);
+        //distributedCacheSystem.sendCritWriteMsgs(1, 4, 645);
 
 
 
