@@ -370,7 +370,7 @@ public class Database extends AbstractActor {
         putData(msg.getKey(), msg.getValue());
         log.info("[DATABASE " + id + "] Wrote key " + msg.getKey() + " with value " + msg.getValue());
 
-        int delay = 10;
+        int delay = 0;
         addDelayInSeconds(delay);
         log.info("[DATABASE " + id + "] Delayed write request for key " + msg.getKey() + " from cache " + getSender().path().name() + " by " + delay + " seconds");
 
@@ -630,8 +630,20 @@ public class Database extends AbstractActor {
 
         // check if request is already fulfilled
         if (!this.ongoingCritWritesRequestId.contains(msg.getRequestId())) {
-            log.info("[DATABASE " + id + "] Received timeout msg for critical write request operation");
-            log.info("[DATABASE " + id + "] Ignoring timeout msg for critical write request operation since it has already been fulfilled");
+            switch (msg.getType()) {
+                case "accepted_write":
+                    log.info("[DATABASE " + id + "] Received timeout msg for critical write request operation (accepted_write)");
+                    log.info("[DATABASE " + id + "] Ignoring timeout msg for critical write request operation (accepted_write) since it has already been fulfilled");
+                    break;
+                case "confirmed_write":
+                    log.info("[DATABASE " + id + "] Received timeout msg for critical write request operation (confirmed_write)");
+                    log.info("[DATABASE " + id + "] Ignoring timeout msg for critical write request operation (confirmed_write) since it has already been fulfilled");
+                    break;
+                default:
+                    log.info("[DATABASE " + id + "] Received timeout msg for critical write request operation (default)");
+                    log.info("[DATABASE " + id + "] Ignoring timeout msg for critical write request operation (default) since it has already been fulfilled");
+                    break;
+            }
             return;
         }
 
@@ -707,7 +719,7 @@ public class Database extends AbstractActor {
                 // but maybe some caches did not update the new value (not a problem, since it is not a requirement)
 
                 // send crit write response
-                log.info("[DATABASE " + id + "] Aborting critical write operation for key: {} and request id: {}", msg.getKey(), msg.getRequestId());
+                log.info("[DATABASE " + id + "] Concluding (approved) critical write operation for key: {} and request id: {}", msg.getKey(), msg.getRequestId());
 
                 // crit_write abortion procedure
 

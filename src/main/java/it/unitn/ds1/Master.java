@@ -108,7 +108,8 @@ public class Master extends AbstractActor {
 		} else {
 			boolean currentConsistency = true;
 			for (Map.Entry<Integer, Integer> entry : msg.getData().entrySet()) {
-				if (entry.getValue() != getData().get(entry.getKey())) {
+				if (entry.getValue().intValue() != getData().get(entry.getKey()).intValue()) {
+					//System.out.println(entry.getValue() + " != " + getData().get(entry.getKey()));
 					setInconsistentStatus();
 					if (currentConsistency){
 						System.out.println("Actor "+getSender().toString()+" is inconsistent!");

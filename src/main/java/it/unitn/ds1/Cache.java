@@ -647,8 +647,10 @@ public class Cache extends AbstractActor{
             if (getCacheType() == TYPE.L2) {
                 startTimeout("read", upperReadRequestMsg.getRequestId());
                 log.info("[{} CACHE {}] Started timeout for read request msg with id {}", getCacheType().toString(), String.valueOf(getID()), upperReadRequestMsg.getRequestId());
+                //crash();
             } else {
                 log.info("[{} CACHE {}] L1 cache, No timeout needed for read request", getCacheType().toString(), String.valueOf(getID()));
+                //crash();
             }
         }
     }
@@ -1227,6 +1229,15 @@ public class Cache extends AbstractActor{
         // send a confirmedWrite to the sender of the applyWriteMsg
         // either l1 cache or database
         if(getCacheType() == TYPE.L2){
+
+            /*
+            if(getID() == 1){
+                log.info("[{} CACHE {}] CRASHING", getCacheType().toString(), String.valueOf(getID()));
+                crash();
+                return;
+            }
+            */
+
             ConfirmedWriteMsg confirmedWriteMsg = new ConfirmedWriteMsg(applyWriteMsg.getKey(), applyWriteMsg.getValue(), applyWriteMsg.getRequestId());
             confirmedWriteMsg.addCache(getSelf());
             getSender().tell(confirmedWriteMsg, getSelf());
@@ -1562,31 +1573,36 @@ public class Cache extends AbstractActor{
         // non-standard timeout msg, not related to the 4 operations but to recovery operation
         if(getCacheType().equals(TYPE.L1)){
             if(msg.getType().equals("response_data_recover")){
+                log.info("[{} CACHE {}] Received timeout msg for response_data_recover", getCacheType(), getID());
 
-                System.out.println("L1 cache " + getID() + " received timeout msg for response_data_recover");
+                if(this.isWaitingForKeys){
+                    // some children have responded, but at least one is missing (but 1 crash at most is tolerated)
+                    // recoveredKeys contains all the keys that need to be recovered
+                    this.isWaitingForKeys = false;
 
-                // some children have responded, but at least one is missing (but 1 crash at most is tolerated)
-                // recoveredKeys contains all the keys that need to be recovered
-                this.isWaitingForKeys = false;
+                    // ask the database for the "fresh" values of the recovered keys
+                    HashSet<Integer> recoveredKeysToSend = new HashSet<>(this.recoveredKeys);
+                    RequestUpdatedDataMsg requestUpdatedDataMsg = new RequestUpdatedDataMsg(recoveredKeysToSend);
+                    getParent().tell(requestUpdatedDataMsg, getSelf());
+                    log.info("[{} CACHE {}] Sent request updated data msg to {}", getCacheType(), getID(), getParent().path().name());
 
-                // ask the database for the "fresh" values of the recovered keys
-                HashSet<Integer> recoveredKeysToSend = new HashSet<>(this.recoveredKeys);
-                RequestUpdatedDataMsg requestUpdatedDataMsg = new RequestUpdatedDataMsg(recoveredKeysToSend);
-                getParent().tell(requestUpdatedDataMsg, getSelf());
-                log.info("[{} CACHE {}] Sent request updated data msg to {}", getCacheType(), getID(), getParent().path().name());
+                    log.info("[{} CACHE {}] BEFORE, Recovered keys updated: {}", getCacheType(), getID(), recoveredKeys.toString());
+                    // clear recoveredKeys
+                    recoveredKeys.clear();
+                    log.info("[{} CACHE {}] Cleared recovered keys", getCacheType(), getID());
+                    log.info("[{} CACHE {}] Recovered keys updated: {}", getCacheType(), getID(), recoveredKeys.toString());
 
-                log.info("[{} CACHE {}] BEFORE, Recovered keys updated: {}", getCacheType(), getID(), recoveredKeys.toString());
-                // clear recoveredKeys
-                recoveredKeys.clear();
-                log.info("[{} CACHE {}] Cleared recovered keys", getCacheType(), getID());
-                log.info("[{} CACHE {}] Recovered keys updated: {}", getCacheType(), getID(), recoveredKeys.toString());
+                    log.info("[{} CACHE {}] BEFORE, Children sources updated: {}", getCacheType(), getID(), childrenSources.toString());
+                    // clear childrenSources
+                    childrenSources.clear();
+                    log.info("[{} CACHE {}] Cleared children sources", getCacheType(), getID());
+                    log.info("[{} CACHE {}] Children sources updated: {}", getCacheType(), getID(), childrenSources.toString());
+                    return;
+                } else {
+                    log.info("[{} CACHE {}] Received timeout msg for response_data_recover, but not waiting for keys", getCacheType(), getID());
+                    return;
+                }
 
-                log.info("[{} CACHE {}] BEFORE, Children sources updated: {}", getCacheType(), getID(), childrenSources.toString());
-                // clear childrenSources
-                childrenSources.clear();
-                log.info("[{} CACHE {}] Cleared children sources", getCacheType(), getID());
-                log.info("[{} CACHE {}] Children sources updated: {}", getCacheType(), getID(), childrenSources.toString());
-                return;
             }
             return;
         }

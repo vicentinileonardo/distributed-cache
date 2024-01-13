@@ -403,6 +403,7 @@ public class DistributedCacheSystem {
         Route stateL2caches = new HTTPRoutes().stateL2caches(distributedCacheSystem);
         Route stateDB = new HTTPRoutes().stateDB(distributedCacheSystem);
         Route consistencyCheck = new HTTPRoutes().consistencyCheck(distributedCacheSystem);
+        Route clientOperations = new HTTPRoutes().clientOperations(distributedCacheSystem);
 
         Route concat = concat(getClients,
                 getL1Caches,
@@ -414,7 +415,8 @@ public class DistributedCacheSystem {
                 stateL1caches,
                 stateL2caches,
                 stateDB,
-                consistencyCheck);
+                consistencyCheck,
+                clientOperations);
 
         Http.get(distributedCacheSystem.system)
                 .newServerAt("localhost", 3003)
@@ -454,17 +456,17 @@ public class DistributedCacheSystem {
         sleep(10000);
         distributedCacheSystem.sendReadMsgs(4, 6);
         */
-        distributedCacheSystem.sendReadMsgs(4, 5);
-        sleep(10000);
+        //distributedCacheSystem.sendReadMsgs(4, 5);
+        //sleep(10000);
         //distributedCacheSystem.sendWriteMsgs(1, 4, 7);
         //sleep(2000);
         //distributedCacheSystem.sendReadMsgs(2);
         //sleep(50000);
-        distributedCacheSystem.sendCritReadMsgs(4, 5);
-        sleep(10000);
-        distributedCacheSystem.sendReadMsgs(4, 5);
+        //distributedCacheSystem.sendCritReadMsgs(4, 5);
+        //sleep(10000);
+        //distributedCacheSystem.sendReadMsgs(4, 5);
 
-        //distributedCacheSystem.sendCritWriteMsgs(1, 4, 645);
+        //distributedCacheSystem.sendCritWriteMsgs(1, 4, 777);
 
 
 

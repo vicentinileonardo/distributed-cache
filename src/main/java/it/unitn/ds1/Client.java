@@ -554,7 +554,7 @@ public class Client extends AbstractActor {
         }
 
         // print updated caches
-        log.info("[CLIENT " + id + "] Updated caches: " + msg.printUpdatedCaches());
+        //log.info("[CLIENT " + id + "] Updated caches: " + msg.printUpdatedCaches());
 
         operations.get(operations.size() - 1).setValue(msg.getValue());
         operations.get(operations.size() - 1).setFinished(true);
