@@ -187,7 +187,39 @@ public class HTTPRoutes extends AllDirectives {
         );
     }
 
+    public Route clientOperationsList(DistributedCacheSystem system) {
+        return path(segment("clients").slash(segment()), (String id) ->
+                get(() -> {
+                    CustomPrint.print(classString, "", "", "Trying to get operation list of client: " + id );
 
+                    HashSet<ActorRef> clients = system.getClients();
+
+                    ActorRef foundClient = null;
+
+                    //find the client with the given id
+                    for (ActorRef client : clients) {
+                        if (client.path().name().equals(id)) {
+                            foundClient = client;
+                            break;
+                        }
+                    }
+
+                    if (foundClient == null) {
+                        ObjectNode message = JsonNodeFactory.instance.objectNode();
+                        String value = "Client: " + id + " not found";
+                        message.put("message", value);
+                        return completeOK(message, Jackson.marshaller());
+                    }
+
+                    foundClient.tell(new ClientOperationsListMsg(), ActorRef.noSender());
+                    ObjectNode message = JsonNodeFactory.instance.objectNode();
+                    String value = "ClientOperationsList message sent to client: " + id;
+                    CustomPrint.print(classString, "", "", value);
+                    message.put("message", value);
+                    return completeOK(message, Jackson.marshaller());
+                })
+        );
+    }
 
     public Route crashL2caches(DistributedCacheSystem system) {
         return path(segment("l2caches").slash(segment()).slash("crash"), (String id) ->

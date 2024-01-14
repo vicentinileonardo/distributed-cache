@@ -455,6 +455,7 @@ public class Client extends AbstractActor {
                 .match(TimeoutElapsedMsg.class, this::onTimeoutElapsedMsg)
                 .match(ResponseConnectionMsg.class, this::onResponseConnectionMsg)
                 .match(InfoMsg.class, this::onInfoMsg)
+                .match(ClientOperationsListMsg.class, this::onClientOperationsListMsg)
 
                 .matchAny(o -> log.debug("[CLIENT " + id + "] received unknown message from " +
                         getSender().path().name() + ": " + o))
@@ -711,4 +712,18 @@ public class Client extends AbstractActor {
     private void onInfoMsg (InfoMsg msg){
         log.info("[CLIENT {}] Parent: ", getId(), getParent().path().name());
     }
+
+    private void onClientOperationsListMsg (ClientOperationsListMsg msg) {
+
+        //print all operations
+        if (operations.size() > 0) {
+            for (int i = 0; i < operations.size(); i++) {
+                ClientOperation operation = operations.get(i);
+                log.info("[CLIENT " + id + "] Operation " + operation);
+            }
+        } else {
+            log.info("[CLIENT " + id + "] No operations by this client");
+        }
+    }
+
 }

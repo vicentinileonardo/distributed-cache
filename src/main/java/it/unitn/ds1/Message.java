@@ -132,6 +132,8 @@ public class Message {
 
     public static class InfoItemsMsg implements Serializable {}
 
+    public static class ClientOperationsListMsg implements Serializable {}
+
 
     // ----------CRASH RELATED MESSAGES----------
     public static class CrashMsg implements Serializable{

@@ -404,8 +404,10 @@ public class DistributedCacheSystem {
         Route stateDB = new HTTPRoutes().stateDB(distributedCacheSystem);
         Route consistencyCheck = new HTTPRoutes().consistencyCheck(distributedCacheSystem);
         Route clientOperations = new HTTPRoutes().clientOperations(distributedCacheSystem);
+        Route clientOperationsList = new HTTPRoutes().clientOperationsList(distributedCacheSystem);
 
-        Route concat = concat(getClients,
+        Route concat = concat(clientOperationsList,
+                getClients,
                 getL1Caches,
                 getL2Caches,
                 crashL1Caches,
@@ -416,7 +418,8 @@ public class DistributedCacheSystem {
                 stateL2caches,
                 stateDB,
                 consistencyCheck,
-                clientOperations);
+                clientOperations
+                );
 
         Http.get(distributedCacheSystem.system)
                 .newServerAt("localhost", 3003)
