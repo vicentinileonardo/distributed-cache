@@ -1,7 +1,30 @@
-# distributed-cache
-Distributed Systems 1 course project 
+#  Multi-level distributed cache
 
-# HTTP Server endpoints
+Distributed Systems 1 course project: Multi-level distributed cache
+
+## How to run
+
+The project can be run using the following command:
+```bash
+gradle run
+```
+
+## How to interact with the system
+
+The system can be interacted with code, inside the main method of the DistributedCacheSystem class.
+
+The system can also be interacted with using the HTTP server, which is started by default on port 3003.
+
+To crash and recover caches, you can use either the endpoints or the crash() and recover() methods strategically placed in the code.
+If needed, you can also add arbitrary delays in the code: the addDelayInSeconds() methods is placed on every function dealing with a request.
+
+Number of actors can be tuned in the config.yaml file.
+
+Timeouts can be tuned in the config.yaml file.
+If timeouts are not set carefully, the system might not work properly: protocols might behave differently than expected.
+
+
+## HTTP Server endpoints
 
 The majority of the following are all GET requests, even if it is not completely RESTful compliant.
 Names of clients, caches and database are of the type: $a, $b, $c
@@ -9,7 +32,7 @@ Names of clients, caches and database are of the type: $a, $b, $c
 The only POST request is the one that is used to start operations for a client.
 
 http://localhost:3003/clients
-http://localhost:3003/clients/{client_name}   //to get list of operations for a client
+http://localhost:3003/clients/{client_name}   // to get list of operations for a client
 
 http://localhost:3003/l2caches
 http://localhost:3003/l2caches/{cache_name}/state
@@ -23,9 +46,10 @@ http://localhost:3003/l1caches/{cache_name}/recover
 
 http://localhost:3003/db/state
 
-http://localhost:3003/healthCheck
+http://localhost:3003/healthCheck   // to check for system consistency
+The "healthCheck" endpoint assumes no crashes, so before using it, you need to make sure all caches are up and running.
+If a cache is crashed, you need to recover it before using the healthCheck endpoint.
 
-This endpoint assumes no crashes, so before using it,  you need to make sure all caches are up and running.
 
 POST http://localhost:3003/clients/{client_name}
 

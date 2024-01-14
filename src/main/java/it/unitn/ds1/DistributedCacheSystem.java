@@ -426,65 +426,28 @@ public class DistributedCacheSystem {
                 .bind(concat);
 
 
-        /*
         distributedCacheSystem.sendReadMsgs(0, 1);
         sleep(10000);
-        distributedCacheSystem.sendReadMsgs(0, 2);
+        distributedCacheSystem.sendWriteMsgs(1, 4, 7);
         sleep(10000);
-        distributedCacheSystem.sendReadMsgs(0, 3);
+        distributedCacheSystem.sendCritReadMsgs(4, 5);
         sleep(10000);
-        distributedCacheSystem.sendReadMsgs(1, 4);
-        sleep(10000);
-        distributedCacheSystem.sendReadMsgs(1, 5);
-        sleep(10000);
-        distributedCacheSystem.sendReadMsgs(1, 6);
-        sleep(10000);
-        distributedCacheSystem.sendReadMsgs(1, 7);
-        sleep(10000);
-        distributedCacheSystem.sendReadMsgs(2, 7);
-        sleep(10000);
-        distributedCacheSystem.sendReadMsgs(2, 8);
-        sleep(10000);
-        distributedCacheSystem.sendReadMsgs(2, 9);
-        sleep(10000);
-        distributedCacheSystem.sendReadMsgs(3, 1);
-        sleep(10000);
-        distributedCacheSystem.sendReadMsgs(3, 2);
-        sleep(10000);
-        distributedCacheSystem.sendReadMsgs(3, 3);
-        sleep(10000);
-        distributedCacheSystem.sendReadMsgs(4, 4);
-        sleep(10000);
-        distributedCacheSystem.sendReadMsgs(4, 5);
-        sleep(10000);
-        distributedCacheSystem.sendReadMsgs(4, 6);
-        */
-        //distributedCacheSystem.sendReadMsgs(4, 5);
-        //sleep(10000);
-        //distributedCacheSystem.sendWriteMsgs(1, 4, 7);
-        //sleep(2000);
-        //distributedCacheSystem.sendReadMsgs(2);
-        //sleep(50000);
-        //distributedCacheSystem.sendCritReadMsgs(4, 5);
-        //sleep(10000);
-        //distributedCacheSystem.sendReadMsgs(4, 5);
-
-        //distributedCacheSystem.sendCritWriteMsgs(1, 4, 777);
+        distributedCacheSystem.sendCritWriteMsgs(1, 4, 777);
 
 
+    /*
+        try {
+            sleep(2000);
+            System.out.println(">>> Press ENTER to exit <<<");
+            System.in.read();
+        }
+        catch (IOException ioe) {} catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
+        system.terminate();
 
-
-
-//        try {
-//            sleep(2000);
-//            System.out.println(">>> Press ENTER to exit <<<");
-//            System.in.read();
-//        }
-//        catch (IOException ioe) {} catch (InterruptedException e) {
-//            e.printStackTrace();
-//        }
-//        system.terminate();
+     */
 
     }
 
