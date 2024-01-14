@@ -9,6 +9,8 @@ The project can be run using the following command:
 gradle run
 ```
 
+To stop the system, simply press CTRL+C
+
 ## How to interact with the system
 
 The system can be interacted with code, inside the main method of the DistributedCacheSystem class.
@@ -17,9 +19,9 @@ The system can also be interacted with using the HTTP server, which is started b
 
 To crash and recover caches, you can use either the endpoints or the crash() and recover() methods strategically placed in the code.
 If needed, you can also add arbitrary delays in the code: the addDelayInSeconds() methods is placed on every function dealing with a request.
+Arbitrary delays could be also added to the database actor, to ease the testing of the system (to gain time to manually crash a cache).
 
 Number of actors can be tuned in the config.yaml file.
-
 Timeouts can be tuned in the config.yaml file.
 If timeouts are not set carefully, the system might not work properly: protocols might behave differently than expected.
 
@@ -28,6 +30,11 @@ If timeouts are not set carefully, the system might not work properly: protocols
 
 The majority of the following are all GET requests, even if it is not completely RESTful compliant.
 Names of clients, caches and database are of the type: $a, $b, $c
+With the standard default configuration, there are 5 clients, 5 L2 caches, 3 L1 caches and 1 database.
+Database is called by Akka: $a
+L1 caches are called by Akka: $b, $c, $d
+L2 caches are called by Akka: $e, $f, $g, $h, $i
+Clients are called by Akka: $j, $k, $l, $m, $n
 
 The only POST request is the one that is used to start operations for a client.
 

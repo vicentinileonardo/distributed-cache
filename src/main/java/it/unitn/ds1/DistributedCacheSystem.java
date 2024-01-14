@@ -426,13 +426,13 @@ public class DistributedCacheSystem {
                 .bind(concat);
 
 
-        distributedCacheSystem.sendReadMsgs(0, 1);
-        sleep(10000);
-        distributedCacheSystem.sendWriteMsgs(1, 4, 7);
-        sleep(10000);
-        distributedCacheSystem.sendCritReadMsgs(4, 5);
-        sleep(10000);
-        distributedCacheSystem.sendCritWriteMsgs(1, 4, 777);
+        //distributedCacheSystem.sendReadMsgs(0, 1);
+        //sleep(10000);
+        //distributedCacheSystem.sendWriteMsgs(1, 4, 7);
+        //sleep(10000);
+        //distributedCacheSystem.sendCritReadMsgs(4, 5);
+        //sleep(10000);
+        //distributedCacheSystem.sendCritWriteMsgs(1, 4, 777);
 
 
     /*
