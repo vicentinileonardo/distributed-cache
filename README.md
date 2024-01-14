@@ -9,6 +9,7 @@ Names of clients, caches and database are of the type: $a, $b, $c
 The only POST request is the one that is used to start operations for a client.
 
 http://localhost:3003/clients
+http://localhost:3003/clients/{client_name}   //to get list of operations for a client
 
 http://localhost:3003/l2caches
 http://localhost:3003/l2caches/{cache_name}/state
