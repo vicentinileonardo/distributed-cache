@@ -1474,11 +1474,13 @@ public class Cache extends AbstractActor{
 
                     // inconsistency between the data of the child and the data of the db
                     // we send only the data that is different from the one the child already has, to save bandwidth
+                    System.out.println("msg.getData().get(key) = " + msg.getData().get(key));
+                    System.out.println("value = " + value);
                     if (msg.getData().get(key) != value) {
                         System.out.println("different data");
                         System.out.println("msg.getData().get(key) = " + msg.getData().get(key));
                         System.out.println("value = " + value);
-                        tmpData.put(key, value);
+                        tmpData.put(key, msg.getData().get(key)); //BUG SOLVED AFTER SENDING PROJECT
                         log.info("[{} CACHE {}] Found new data for child {}", getCacheType(), getID(), child.path().name());
                     }
                 }

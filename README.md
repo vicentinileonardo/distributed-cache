@@ -1,6 +1,6 @@
 #  Multi-level distributed cache
 
-Distributed Systems 1 course project: Multi-level distributed cache
+Distributed Systems 1 course project
 
 ## How to run
 
