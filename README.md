@@ -1,6 +1,20 @@
 #  Multi-level distributed cache
 
-Distributed Systems 1 course project
+## Project descriptions
+
+This distributed cache system is designed to support multiple clients that read and write data items stored in a database.
+There are **2 levels of cache nodes**, arranged in a tree structure.
+
+The system is implemented leveraging the **Akka** framework: clients, caches, and the main database are all modeled as actors within the Akka actor system.
+
+Clients interact with the system through the cache nodes, which are responsible for processing read and write requests. These requests include basic operations namely **Read** and **Write**, as well as critical variants, **Critical Read** and **Critical Write**, each with specific guarantees.
+
+Additionally, the system considers the possibility of cache crashes and implements a crash detection algorithm based on timeouts.
+A**recovery procedure** is also implemented to restore the system to a consistent state after a crash.
+
+The goal of the system is to maintain **eventual consistency** between the database and the cache nodes, even in the presence of crashes.
+
+A web server was created to interact with the system, firing: client operations, cache crashes and recoveries, system consistency check.
 
 ## How to run
 
