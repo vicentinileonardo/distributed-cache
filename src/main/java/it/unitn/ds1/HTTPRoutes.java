@@ -5,11 +5,14 @@ import akka.actor.ActorSystem;
 import akka.http.javadsl.server.AllDirectives;
 import akka.http.javadsl.server.Route;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
 
 import it.unitn.ds1.Message.*;
 
+import static akka.http.javadsl.server.PathMatchers.integerSegment;
 import static akka.http.javadsl.server.PathMatchers.segment;
 
 import akka.http.javadsl.marshallers.jackson.Jackson;
@@ -85,6 +88,136 @@ public class HTTPRoutes extends AllDirectives {
                 ObjectNode response = createResponse(system, "l1caches");
                 return completeOK(response, Jackson.marshaller());
             })
+        );
+    }
+
+
+    public static class Payload {
+        public String operation;
+        public Integer key;
+        public Integer value;
+    }
+
+    public Route clientOperations(DistributedCacheSystem system) {
+        return path(segment("clients").slash(segment()), (String id) ->
+                post(() ->
+                        entity(Jackson.unmarshaller(Payload.class), payload -> {
+
+                            if (payload.operation == null) {
+                                ObjectNode message = JsonNodeFactory.instance.objectNode();
+                                String value = "Operation not found";
+                                message.put("message", value);
+                                return completeOK(message, Jackson.marshaller());
+                            }
+
+                            if (payload.key == null) {
+                                ObjectNode message = JsonNodeFactory.instance.objectNode();
+                                String value = "Key not found";
+                                message.put("message", value);
+                                return completeOK(message, Jackson.marshaller());
+                            }
+
+                            HashSet<ActorRef> clients = system.getClients();
+
+                            ActorRef foundClient = null;
+                            if(!id.equals("random")){
+                                //find the client with the given id
+                                for (ActorRef client : clients) {
+                                    if (client.path().name().equals(id)) {
+                                        foundClient = client;
+                                        break;
+                                    }
+                                }
+                            } else {
+                                //choose a random client
+                                List<ActorRef> clientsList = new ArrayList<>(clients);
+                                Random rand = new Random();
+                                foundClient = clientsList.get(rand.nextInt(clientsList.size()));
+                            }
+
+                            if (foundClient == null) {
+                                ObjectNode message = JsonNodeFactory.instance.objectNode();
+                                String value = "Client: " + id + " not found";
+                                message.put("message", value);
+                                return completeOK(message, Jackson.marshaller());
+                            }
+
+                            switch (payload.operation) {
+                                case "read":
+                                    foundClient.tell(new StartReadRequestMsg(payload.key), ActorRef.noSender());
+                                    break;
+                                case "write":
+                                    if (payload.value == null) {
+                                        ObjectNode message = JsonNodeFactory.instance.objectNode();
+                                        String value = "Value not found";
+                                        message.put("message", value);
+                                        return completeOK(message, Jackson.marshaller());
+                                    }
+                                    foundClient.tell(new StartWriteMsg(payload.key, payload.value), ActorRef.noSender());
+                                    break;
+                                case "crit_read":
+                                    foundClient.tell(new StartCriticalReadRequestMsg(payload.key), ActorRef.noSender());
+                                    break;
+                                case "crit_write":
+                                    if (payload.value == null) {
+                                        ObjectNode message = JsonNodeFactory.instance.objectNode();
+                                        String value = "Value not found";
+                                        message.put("message", value);
+                                        return completeOK(message, Jackson.marshaller());
+                                    }
+                                    foundClient.tell(new StartCriticalWriteRequestMsg(payload.key, payload.value), ActorRef.noSender());
+                                    break;
+                                default:
+                                    ObjectNode message = JsonNodeFactory.instance.objectNode();
+                                    String value = "Operation not supported";
+                                    message.put("message", value);
+                                    return completeOK(message, Jackson.marshaller());
+                            }
+
+                            // Finally, return a response
+                            ObjectNode message = JsonNodeFactory.instance.objectNode();
+                            if (payload.operation.equals("read") || payload.operation.equals("crit_read")) {
+                                message.put("message", "Client: " + id + " contacted to perform " + payload.operation + " on key: " + payload.key);
+                            } else {
+                                message.put("message", "Client: " + id + " contacted to perform " + payload.operation + " on key: " + payload.key + " with value: " + payload.value);
+                            }
+                            return completeOK(message, Jackson.marshaller());
+                        })
+                )
+        );
+    }
+
+    public Route clientOperationsList(DistributedCacheSystem system) {
+        return path(segment("clients").slash(segment()), (String id) ->
+                get(() -> {
+                    CustomPrint.print(classString, "", "", "Trying to get operation list of client: " + id );
+
+                    HashSet<ActorRef> clients = system.getClients();
+
+                    ActorRef foundClient = null;
+
+                    //find the client with the given id
+                    for (ActorRef client : clients) {
+                        if (client.path().name().equals(id)) {
+                            foundClient = client;
+                            break;
+                        }
+                    }
+
+                    if (foundClient == null) {
+                        ObjectNode message = JsonNodeFactory.instance.objectNode();
+                        String value = "Client: " + id + " not found";
+                        message.put("message", value);
+                        return completeOK(message, Jackson.marshaller());
+                    }
+
+                    foundClient.tell(new ClientOperationsListMsg(), ActorRef.noSender());
+                    ObjectNode message = JsonNodeFactory.instance.objectNode();
+                    String value = "ClientOperationsList message sent to client: " + id;
+                    CustomPrint.print(classString, "", "", value);
+                    message.put("message", value);
+                    return completeOK(message, Jackson.marshaller());
+                })
         );
     }
 
@@ -283,6 +416,25 @@ public class HTTPRoutes extends AllDirectives {
 
                     ObjectNode message = JsonNodeFactory.instance.objectNode();
                     String value = "CurrentData message sent to DB";
+                    CustomPrint.print(classString, "", "", value);
+                    message.put("message", value);
+                    return completeOK(message, Jackson.marshaller());
+                })
+        );
+    }
+
+    public Route consistencyCheck(DistributedCacheSystem system) {
+        return path("healthCheck", () ->
+                get(() -> {
+                    CustomPrint.print(classString, "", "", "Starting consistency check" );
+
+                    //find the l2 cache with the given id
+                    ActorRef master = system.getMaster();
+
+                    master.tell(new StartHealthCheck(), ActorRef.noSender());
+
+                    ObjectNode message = JsonNodeFactory.instance.objectNode();
+                    String value = "Consistency check requested";
                     CustomPrint.print(classString, "", "", value);
                     message.put("message", value);
                     return completeOK(message, Jackson.marshaller());

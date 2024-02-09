@@ -19,12 +19,16 @@ public class Client extends AbstractActor {
 
     private int id;
 
-    private boolean isResponseReceived = true;
-
     private HashSet<ActorRef> L2_caches = new HashSet<>();
 
     private ActorRef parent;
     private boolean isConnectedToParent = true;
+
+    // one-element list timeouts_to_skip
+    // values could be: "read", "write", "crit_read", "crit_write"
+    // "connection" is not considered since the "connection" operation is carried out by only one cache
+    // therefore there is no need to wait more time due to an upper level timeout
+    private List<String> timeouts_to_skip = new ArrayList<>();
 
     private HashMap<String, Integer> timeouts = new HashMap<>();
 
@@ -37,7 +41,7 @@ public class Client extends AbstractActor {
         private final int key;
         private int value;
         private boolean finished;
-        //private boolean success; //maybe not needed
+        private boolean success;
         private final long startTime = System.currentTimeMillis();
         private long endTime;
         private long firstRequestId; // equal to the id of the first request sent for this operation
@@ -96,8 +100,12 @@ public class Client extends AbstractActor {
             this.finished = finished;
         }
 
+        public void setSuccess(boolean success) {
+            this.success = success;
+        }
+
         public String toString() {
-            return "{ Operation: " + operation + ", Key: " + key + ", Value: " + value + ", Finished: " + finished  + ", Start Time: " + startTime + ", End Time: " + endTime + ", Duration: " + getDuration() + "ms }";
+            return "{ Operation: " + operation + ", Key: " + key + ", Value: " + value + ", Finished: " + finished  + ", Success: " + success + ", Start Time: " + startTime + ", End Time: " + endTime + ", Duration: " + getDuration() + " }";
         }
 
     }
@@ -160,42 +168,17 @@ public class Client extends AbstractActor {
         this.timeouts.put(type, value);
     }
 
-    //client could receive only 1 timeout message at a time (per type maybe)
-    public void startTimeout(String type, String connectionDestination) {
+    public void startTimeout(String type, long requestId, String connectionDestination) {
         log.info("[CLIENT " + id + "] Starting timeout for " + type + " operation, " + getTimeout(type) + " seconds");
         getContext().system().scheduler().scheduleOnce(
             Duration.create(getTimeout(type), TimeUnit.SECONDS),
             getSelf(),
-            new TimeoutMsg(type, connectionDestination), // the message to send
+            new TimeoutMsg(type, requestId, connectionDestination), // the message to send
             getContext().system().dispatcher(),
             getSelf()
         );
 
-        //store current active timeout
-        //activeTimeouts.put(type, true);
-
     }
-
-    //data structure to store current active timeouts, ex: <"connection": true>
-    //private HashMap<String, Boolean> activeTimeouts = new HashMap<>();
-
-    // one-element list timeouts_to_skip
-    // values could be: "read", "write", "crit_read", "crit_write"
-    // "connection" is not considered since the "connection" operation is carried out by only one cache
-    // therefore there is no need to wait more time due to an upper level timeout
-    private List<String> timeouts_to_skip = new ArrayList<>();
-
-    private boolean isResponseReceived() {
-        return this.isResponseReceived;
-    } //maybe not needed
-
-    private void sendRequest() {
-        this.isResponseReceived = false;
-    } //maybe not needed
-
-    private void receiveResponse() {
-        this.isResponseReceived = true;
-    } //maybe not needed
 
     public void addDelayInSeconds(int seconds) {
         try {
@@ -207,26 +190,6 @@ public class Client extends AbstractActor {
         }
     }
 
-    public void retryOperation(){
-        if (operations.size() > 0){
-            // get last operation on the list
-            ClientOperation lastOp = operations.get(operations.size() - 1);
-            if(lastOp.isFinished()){
-                log.info("[CLIENT " + id + "] Operation" + lastOp.getOperation() + " finished");
-            }
-
-            //int delayInSeconds = rnd.nextInt(5);
-            int delayInSeconds = 15; //to be changed, dynamic
-
-            // we must differentiate between standard sendReadRequestMsg, sendWriteRequestMsg, etc
-            // since we need to re use the same requestId
-            retrySendMsg(lastOp, delayInSeconds);
-
-        } else {
-            log.info("[CLIENT " + id + "] No operations to retry");
-        }
-    }
-
     /*-- Actor logic -- */
 
     public void preStart() {
@@ -234,6 +197,7 @@ public class Client extends AbstractActor {
     }
 
     // ----------SEND LOGIC----------
+
     public void sendInitMsg(){
         InitMsg msg = new InitMsg(getSelf(), "client");
         parent.tell(msg, getSelf());
@@ -246,23 +210,23 @@ public class Client extends AbstractActor {
         addDelayInSeconds(delayInSeconds);
         log.info("[CLIENT " + id + "] Delay of " + delayInSeconds + " seconds added");
 
-        Stack<ActorRef> path = new Stack<>();
-        path.push(getSelf());
-        long requestId = System.currentTimeMillis(); //To be modified
-        ReadRequestMsg msg = new ReadRequestMsg(key, path, requestId);
-        log.info("[CLIENT " + id + "] Created read request msg to be sent to " + getParent().path().name() + " with key " + key + " and requestId " + msg.getRequestId());
-
         // assumption: client can send only 1 request at a time
         // if last operation of the client is finished or there are no operations, add new operation
         if ((operations.size() > 0 && operations.get(operations.size() - 1).isFinished()) || operations.size() == 0) {
+
+            Stack<ActorRef> path = new Stack<>();
+            path.push(getSelf());
+            long requestId = System.currentTimeMillis();
+            ReadRequestMsg msg = new ReadRequestMsg(key, path, requestId);
+            log.info("[CLIENT " + id + "] Created read request msg to be sent to " + getParent().path().name() + " with key " + key + " and requestId " + msg.getRequestId());
+
             operations.add(new ClientOperation("read", key, requestId));
             log.info("[CLIENT " + id + "] Created new read operation");
 
             getParent().tell(msg, getSelf());
-            //sendRequest(); //maybe not needed
             log.info("[CLIENT " + id + "] Sent read request msg! to " + getParent().path().name());
 
-            startTimeout("read", getParent().path().name());
+            startTimeout("read", requestId, getParent().path().name());
 
         } else {
             //if last operation is not finished
@@ -278,15 +242,16 @@ public class Client extends AbstractActor {
         addDelayInSeconds(delayInSeconds);
         log.info("[CLIENT " + id + "] Delay of " + delayInSeconds + " seconds added");
 
-        Stack<ActorRef> path = new Stack<>();
-        path.push(getSelf());
-        long requestId = System.currentTimeMillis(); // To be modified
-        WriteRequestMsg msg = new WriteRequestMsg(key, value, path, requestId);
-        log.info("[CLIENT " + id + "] Created write request msg to be sent to " + getParent().path().name() + " with key " + key + " and value " + value);
-
         //assumption: client can send only 1 request at a time
         //if last operation of the client is finished or there are no operations, add new operation
         if ((operations.size() > 0 && operations.get(operations.size() - 1).isFinished()) || operations.size() == 0) {
+
+            Stack<ActorRef> path = new Stack<>();
+            path.push(getSelf());
+            long requestId = System.currentTimeMillis(); // To be modified
+            WriteRequestMsg msg = new WriteRequestMsg(key, value, path, requestId);
+            log.info("[CLIENT " + id + "] Created write request msg to be sent to " + getParent().path().name() + " with key " + key + " and value " + value);
+
             ClientOperation writeOp = new ClientOperation("write", key, requestId);
             writeOp.setValue(value); //since write operation has value
             operations.add(writeOp);
@@ -296,7 +261,7 @@ public class Client extends AbstractActor {
             //sendRequest(); //maybe not needed
             log.info("[CLIENT " + id + "] Sent write request msg! to " + getParent().path().name());
 
-            startTimeout("write", getParent().path().name());
+            startTimeout("write", requestId, getParent().path().name());
 
         } else {
             //if last operation is not finished
@@ -312,22 +277,23 @@ public class Client extends AbstractActor {
         addDelayInSeconds(delayInSeconds);
         log.info("[CLIENT " + id + "] Delay of " + delayInSeconds + " seconds added");
 
-        Stack<ActorRef> path = new Stack<>();
-        path.push(getSelf());
-        long requestId = System.currentTimeMillis(); //To be modified
-        CriticalReadRequestMsg msg = new CriticalReadRequestMsg(key, path, requestId);
-        log.info("[CLIENT " + id + "] Created critical read request msg to be sent to " + getParent().path().name() + " with key " + key + " and requestId " + msg.getRequestId());
-
         // assumption: client can send only 1 request at a time
         // if last operation of the client is finished or there are no operations, add new operation
         if ((operations.size() > 0 && operations.get(operations.size() - 1).isFinished()) || operations.size() == 0) {
+
+            Stack<ActorRef> path = new Stack<>();
+            path.push(getSelf());
+            long requestId = System.currentTimeMillis(); //To be modified
+            CriticalReadRequestMsg msg = new CriticalReadRequestMsg(key, path, requestId);
+            log.info("[CLIENT " + id + "] Created critical read request msg to be sent to " + getParent().path().name() + " with key " + key + " and requestId " + msg.getRequestId());
+
             operations.add(new ClientOperation("crit_read", key, requestId));
             log.info("[CLIENT " + id + "] Created new critical read operation");
 
             getParent().tell(msg, getSelf());
             log.info("[CLIENT " + id + "] Sent critical read request msg! to " + getParent().path().name());
 
-            startTimeout("crit_read", getParent().path().name());
+            startTimeout("crit_read", requestId, getParent().path().name());
 
         } else {
             //if last operation is not finished
@@ -343,15 +309,17 @@ public class Client extends AbstractActor {
         addDelayInSeconds(delayInSeconds);
         log.info("[CLIENT " + id + "] Delay of " + delayInSeconds + " seconds added");
 
-        Stack<ActorRef> path = new Stack<>();
-        path.push(getSelf());
-        long requestId = System.currentTimeMillis(); // To be modified
-        CriticalWriteRequestMsg msg = new CriticalWriteRequestMsg(key, value, path, requestId);
-        log.info("[CLIENT " + id + "] Created critical write request msg to be sent to " + getParent().path().name() + " with key " + key + " and value " + value);
-
         //assumption: client can send only 1 request at a time
         //if last operation of the client is finished or there are no operations, add new operation
+
         if ((operations.size() > 0 && operations.get(operations.size() - 1).isFinished()) || operations.size() == 0) {
+
+            Stack<ActorRef> path = new Stack<>();
+            path.push(getSelf());
+            long requestId = System.currentTimeMillis(); // To be modified
+            CriticalWriteRequestMsg msg = new CriticalWriteRequestMsg(key, value, path, requestId);
+            log.info("[CLIENT " + id + "] Created critical write request msg to be sent to " + getParent().path().name() + " with key " + key + " and value " + value);
+
             ClientOperation critWriteOp = new ClientOperation("crit_write", key, requestId);
             critWriteOp.setValue(value); //since write operation has value
             operations.add(critWriteOp);
@@ -361,22 +329,40 @@ public class Client extends AbstractActor {
             //sendRequest(); //maybe not needed
             log.info("[CLIENT " + id + "] Sent critical write request msg! to " + getParent().path().name());
 
-            startTimeout("crit_write", getParent().path().name());
+            startTimeout("crit_write", requestId, getParent().path().name());
 
         } else {
             //if last operation is not finished
-            log.info("[CLIENT " + id + "] Cannot create new write operation, last operation not finished");
+            log.info("[CLIENT " + id + "] Cannot create new critical write operation, last operation not finished");
         }
 
     }
 
+    // used when client timeout on a L2 cache and needs to retry the operation with another L2 cache
+    public void retryOperation(){
+        if (operations.size() > 0){
+            // get last operation on the list
+            ClientOperation lastOp = operations.get(operations.size() - 1);
+            if(lastOp.isFinished()){
+                log.info("[CLIENT " + id + "] Operation" + lastOp.getOperation() + " finished");
+                return;
+            }
 
+            //int delayInSeconds = rnd.nextInt(5);
+            int delayInSeconds = 1; //to be changed, dynamic
 
+            // we must differentiate between standard sendReadRequestMsg, sendWriteRequestMsg, etc
+            // since we need to re use the same requestId, we cannot simply use sendReadRequestMsg, sendWriteRequestMsg, etc
+            retrySendMsg(lastOp, delayInSeconds);
 
+        } else {
+            log.info("[CLIENT " + id + "] No operations to retry");
+        }
+    }
 
     public void retrySendMsg(ClientOperation operation, int delayInSeconds){
 
-        System.out.println("Operations size: " + operations.size()); //debug, should be at least 1
+        //System.out.println("Operations size: " + operations.size()); //debug, should be at least 1
 
         Stack<ActorRef> path = new Stack<>();
         path.push(getSelf());
@@ -395,7 +381,7 @@ public class Client extends AbstractActor {
                 getParent().tell(readRequestMsg, getSelf());
                 log.info("[CLIENT " + id + "] Sent read request msg! to " + getParent().path().name());
 
-                startTimeout("read", getParent().path().name());
+                startTimeout("read", requestId, getParent().path().name());
                 log.info("[CLIENT " + id + "] Started timeout for read request msg! to " + getParent().path().name());
                 break;
             case "write":
@@ -410,7 +396,7 @@ public class Client extends AbstractActor {
                 getParent().tell(writeRequestMsg, getSelf());
                 log.info("[CLIENT " + id + "] Sent write request msg! to " + getParent().path().name());
 
-                startTimeout("write", getParent().path().name());
+                startTimeout("write", requestId, getParent().path().name());
                 log.info("[CLIENT " + id + "] Started timeout for write request msg! to " + getParent().path().name());
                 break;
             case "crit_read":
@@ -425,11 +411,11 @@ public class Client extends AbstractActor {
                 getParent().tell(criticalReadRequestMsg, getSelf());
                 log.info("[CLIENT " + id + "] Sent critical read request msg! to " + getParent().path().name());
 
-                startTimeout("crit_read", getParent().path().name());
+                startTimeout("crit_read", requestId, getParent().path().name());
                 log.info("[CLIENT " + id + "] Started timeout for critical read request msg! to " + getParent().path().name());
                 break;
             case "crit_write":
-                log.info("[CLIENT " + id + "] Started creating write request msg, to be sent to " + getParent().path().name() + " with key " + operation.getKey() + " and value " + operation.getValue());
+                log.info("[CLIENT " + id + "] Started creating critical write request msg, to be sent to " + getParent().path().name() + " with key " + operation.getKey() + " and value " + operation.getValue());
 
                 addDelayInSeconds(delayInSeconds);
                 log.info("[CLIENT " + id + "] Delay of " + delayInSeconds + " seconds added");
@@ -440,7 +426,7 @@ public class Client extends AbstractActor {
                 getParent().tell(criticalWriteRequestMsg, getSelf());
                 log.info("[CLIENT " + id + "] Sent critical write request msg! to " + getParent().path().name());
 
-                startTimeout("crit_write", getParent().path().name());
+                startTimeout("crit_write", requestId, getParent().path().name());
                 log.info("[CLIENT " + id + "] Started timeout for critical write request msg! to " + getParent().path().name());
                 break;
         }
@@ -469,15 +455,13 @@ public class Client extends AbstractActor {
                 .match(TimeoutElapsedMsg.class, this::onTimeoutElapsedMsg)
                 .match(ResponseConnectionMsg.class, this::onResponseConnectionMsg)
                 .match(InfoMsg.class, this::onInfoMsg)
+                .match(ClientOperationsListMsg.class, this::onClientOperationsListMsg)
 
                 .matchAny(o -> log.debug("[CLIENT " + id + "] received unknown message from " +
                         getSender().path().name() + ": " + o))
                 .build();
     }
 
-    private void onInfoMsg (InfoMsg msg){
-        log.info("[CLIENT {}] Parent: ", getId(), getParent().path().name());
-    }
 
     private void onStartInitMsg(Message.StartInitMsg msg) {
         //CustomPrint.print(classString,"", String.valueOf(this.id), " Received initialization msg!");
@@ -485,34 +469,152 @@ public class Client extends AbstractActor {
         sendInitMsg();
     }
 
+    // ----------REQUESTS----------
+
+    public void onStartReadRequestMsg(Message.StartReadRequestMsg msg) {
+        log.info("[CLIENT " + id + "] Received start read request msg!");
+        int delay = 0;
+        sendReadRequestMsg(msg.key, delay);
+    }
+
+    private void onStartWriteMsg(StartWriteMsg msg) {
+        log.info("[CLIENT " + id + "] Received write msg request!");
+        int delay = 0;
+        sendWriteRequestMsg(msg.getKey(), msg.getValue(), delay);
+    }
+
+    private void onStartCriticalReadRequestMsg(StartCriticalReadRequestMsg msg){
+        log.info("[CLIENT " + id + "] Received critical read msg request!");
+        int delay = 0;
+        sendCriticalReadRequestMsg(msg.getKey(), delay);
+    }
+
+    private void onStartCriticalWriteRequestMsg(StartCriticalWriteRequestMsg msg){
+        log.info("[CLIENT " + id + "] Received critical write msg request!");
+        int delay = 0;
+        sendCriticalWriteRequestMsg(msg.getKey(), msg.getValue(), delay);
+    }
+
+    // ----------RESPONSES----------
+
+    public void onReadResponseMsg(ReadResponseMsg msg){
+
+        log.info("[CLIENT " + id + "] Received read response from " + getSender().path().name() + " with value " + msg.getValue() + " for key " + msg.getKey());
+        operations.get(operations.size() - 1).setValue(msg.getValue());
+        operations.get(operations.size() - 1).setFinished(true);
+        operations.get(operations.size() - 1).setEndTime();
+
+        if (msg.getValue() == -1) {
+            operations.get(operations.size() - 1).setSuccess(false);
+        } else {
+            operations.get(operations.size() - 1).setSuccess(true);
+        }
+
+        log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
+        log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
+    }
+
+    public void onCriticalReadResponseMsg(CriticalReadResponseMsg msg){
+
+        log.info("[CLIENT " + id + "] Received CritRead response from " + getSender().path().name() + " with value " + msg.getValue() + " for key " + msg.getKey());
+        operations.get(operations.size() - 1).setValue(msg.getValue());
+        operations.get(operations.size() - 1).setFinished(true);
+        operations.get(operations.size() - 1).setEndTime();
+
+        if (msg.getValue() == -1) {
+            operations.get(operations.size() - 1).setSuccess(false);
+        } else {
+            operations.get(operations.size() - 1).setSuccess(true);
+        }
+
+        log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
+        log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
+    }
+
+    private void onWriteResponseMsg(WriteResponseMsg msg) {
+        log.info("[CLIENT " + id + "] Received write response msg, with value " + msg.getValue() + " for key " + msg.getKey() + " from " + getSender().path().name());
+
+        operations.get(operations.size() - 1).setValue(msg.getValue());
+        operations.get(operations.size() - 1).setFinished(true);
+        operations.get(operations.size() - 1).setEndTime();
+        operations.get(operations.size() - 1).setSuccess(true);
+        log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
+        log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
+        // when interacting with the SAME cache (l2 cache)
+        // the client is guaranteed not to read a value older than the last write
+    }
+
+    private void onCriticalWriteResponseMsg(CriticalWriteResponseMsg msg) {
+        log.info("[CLIENT " + id + "] Received critical write response msg, with value " + msg.getValue() + " for key " + msg.getKey() + " from " + getSender().path().name());
+
+        //print isRefused
+        if(msg.isRefused()){
+            log.info("[CLIENT " + id + "] Critical write was REFUSED" );
+        } else {
+            log.info("[CLIENT " + id + "] Critical write was ACCEPTED" );
+        }
+
+        // print updated caches
+        //log.info("[CLIENT " + id + "] Updated caches: " + msg.printUpdatedCaches());
+
+        operations.get(operations.size() - 1).setValue(msg.getValue());
+        operations.get(operations.size() - 1).setFinished(true);
+        operations.get(operations.size() - 1).setEndTime();
+        operations.get(operations.size() - 1).setSuccess(!msg.isRefused());
+        log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
+        log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
+
+    }
+
+    // ----------TIMEOUTS----------
+
     private void onTimeoutMsg(TimeoutMsg msg) {
 
         log.info("[CLIENT " + id + "] Received timeout msg of type " + msg.getType() + " with destination " + msg.getConnectionDestination());
 
         // check timeout msg type
-        System.out.println("msg type " + msg.getType());
         if(Objects.equals(msg.getType(), "read")
             || Objects.equals(msg.getType(), "write")
             || Objects.equals(msg.getType(), "crit_read")
             || Objects.equals(msg.getType(), "crit_write")){
 
-            //System.out.println("inside first if");
             //check if operation is finished in the meantime
-            if (operations.size() > 0 && operations.get(operations.size() - 1).isFinished()) {
-                log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " already finished");
-                log.info("[CLIENT " + id + "] Ignoring timeout msg");
-                return;
+            if (operations.size() > 0) {
+
+                // we cannot just check the last operation (previous implementation)
+                // we cannot either just check the TimeoutMsg type (2 operations of the same type could run one after the other)
+                // since a TimeoutMsg could be received after a first operation is finished and after a second operation is started
+
+                // loop through all client operations, from newest to oldest, and check if the one with the same requestId is finished
+                for (int i = operations.size() - 1; i >= 0; i--) {
+                    ClientOperation operation = operations.get(i);
+                    System.out.println("operation: getFirstRequestId: " + operation.getFirstRequestId() + " --- msg.getRequestId(): " + msg.getRequestId());
+                    if (operation.getFirstRequestId() == msg.getRequestId()) {
+                        if (operation.isFinished()) {
+                            //System.out.println("inside if after new loop of operations");
+                            log.info("[CLIENT " + id + "] Operation " + operation.getOperation() + " already finished");
+                            log.info("[CLIENT " + id + "] Ignoring timeout msg");
+                            return;
+                        } else {
+                            //System.out.println("inside ELSE after new loop of operations");
+                            log.info("[CLIENT " + id + "] Operation " + operation.getOperation() + " still running");
+                            log.info("[CLIENT " + id + "] Processing timeout msg");
+                            break;
+                        }
+                    }
+                }
             }
 
             // check if it is a timeout to be skipped
             // use case: a L2 cache tells the client that it needs more time to fulfill client's request
-            System.out.println("timeouts to skip size: " + timeouts_to_skip.size());
+            System.out.println("timeouts to skip size BEFORE: " + timeouts_to_skip.size());
             if(timeouts_to_skip.size() > 0){
-                System.out.println("inside second if");
+                System.out.println("inside first if of timeouts to skip");
                 String current_op = operations.get(operations.size() - 1).getOperation();
                 if(timeouts_to_skip.get(0).equals(current_op)){
                     timeouts_to_skip.remove(0);
                     log.info("[CLIENT " + id + "] Skipping timeout msg, since parent is still processing the request and needs more time");
+                    System.out.println("timeouts to skip size AFTER: " + timeouts_to_skip.size());
                     return;
                 }
             }
@@ -535,7 +637,7 @@ public class Client extends AbstractActor {
         ActorRef[] tmpArray = caches.toArray(new ActorRef[caches.size()]);
         ActorRef cache = null;
 
-        // possible improvement: treat the set as a circular array
+        // possible future improvement: manage the set as a circular array
         while(cache == this.parent || cache == null) {
             // generate a random number
             Random rnd = new Random();
@@ -551,7 +653,7 @@ public class Client extends AbstractActor {
         getParent().tell(new RequestConnectionMsg(), getSelf());
         log.info("[CLIENT " + id + "] Sent request connection msg to " + getParent().path().name());
 
-        startTimeout("connection", getParent().path().name());
+        startTimeout("connection", -1, getParent().path().name());
         log.info("[CLIENT " + id + "] Started connection timeout");
     }
 
@@ -562,28 +664,27 @@ public class Client extends AbstractActor {
 
         // check what is the current operation ongoing (read, write, crit_read, crit_write)
         // assumption: only one operation can be ongoing at a time per client
-        String current_op = operations.get(operations.size() - 1).getOperation();
-        //System.out.println("current op: " + current_op);
-        //System.out.println("msg type: " + msg.getType());
-        if(current_op != msg.getType()){
+        ClientOperation current_op = operations.get(operations.size() - 1);
+        String current_op_type = current_op.getOperation();
+        if(current_op_type != msg.getType()){
             // should never happen with the current assumptions
-            log.info("[CLIENT " + id + "] Received timeout elapsed msg of type " + msg.getType() + " but current operation is " + current_op);
+            log.info("[CLIENT " + id + "] Received timeout elapsed msg of type " + msg.getType() + " but current operation is " + current_op_type);
             return;
         }
 
-        // add to timeout_to_skip the operation type of the msg received
+        // add to timeouts_to_skip the operation type of the msg received
         // that operation must match the current operation ongoing
-        // timeout_to_skip is a one-element list since only one operation can be ongoing at a time per client
+        // timeouts_to_skip is a one-element list since only one operation can be ongoing at a time per client
         // assumption: you get only one timeout elapsed msg per time
         //System.out.println("timeouts to skip size: " + timeouts_to_skip.size());
         if(timeouts_to_skip.size() == 0){
             //System.out.println("inside if of timeout elapsed msg");
             timeouts_to_skip.add(msg.getType());
-            log.info("[CLIENT " + id + "] Added " + msg.getType() + "timeout to timeouts_to_skip");
+            log.info("[CLIENT " + id + "] Added " + msg.getType() + " timeout to timeouts_to_skip");
         }
 
         // start a new timeout with the same type as the current operation ongoing
-        startTimeout(msg.getType(), getSender().path().name());
+        startTimeout(msg.getType(), current_op.getFirstRequestId(), getSender().path().name());
         log.info("[CLIENT " + id + "] Will wait for another timeout msg of type " + msg.getType() + " from " + getSender().path().name());
         log.info("[CLIENT " + id + "] Started " + msg.getType() + " timeout");
 
@@ -591,22 +692,13 @@ public class Client extends AbstractActor {
 
     public void onResponseConnectionMsg(ResponseConnectionMsg msg){
 
-        // this is the case when a L2 cache crashes and the client tries to connect to another L2 cache
+        // this is the case when a L2 cache crashes and therefore the client tries to connect to another L2 cache
 
-        //receiveResponse();
         log.info("[CLIENT " + id + "] Received response connection msg from " + getSender().path().name());
 
         if(msg.getResponse().equals("ACCEPTED")){
             log.info("[CLIENT " + id + "] Connection established with " + getSender().path().name());
             this.isConnectedToParent = true;
-
-            /*
-            //stop connection timeout
-            if(activeTimeouts.get("connection") == true){
-                activeTimeouts.put("connection", false);
-                log.info("[CLIENT " + id + "] Stopped connection timeout");
-            }
-             */
 
             //retrying last operation
             retryOperation();
@@ -615,74 +707,23 @@ public class Client extends AbstractActor {
 
     }
 
-    public void onStartReadRequestMsg(Message.StartReadRequestMsg msg) {
-        log.info("[CLIENT " + id + "] Received start read request msg!");
-        int delayInSeconds = 60;
-        sendReadRequestMsg(msg.key, delayInSeconds);
+    // ----------OTHER MESSAGES----------
+
+    private void onInfoMsg (InfoMsg msg){
+        log.info("[CLIENT {}] Parent: ", getId(), getParent().path().name());
     }
 
-    // ----------WRITE MESSAGES LOGIC----------
-    private void onStartWriteMsg(StartWriteMsg msg) { //TODO: change name according to the read
-        log.info("[CLIENT " + id + "] Received write msg request!");
-        int delayInSeconds = 45;
-        sendWriteRequestMsg(msg.key, msg.value, delayInSeconds);
+    private void onClientOperationsListMsg (ClientOperationsListMsg msg) {
+
+        //print all operations
+        if (operations.size() > 0) {
+            for (int i = 0; i < operations.size(); i++) {
+                ClientOperation operation = operations.get(i);
+                log.info("[CLIENT " + id + "] Operation " + operation);
+            }
+        } else {
+            log.info("[CLIENT " + id + "] No operations by this client");
+        }
     }
 
-    private void onStartCriticalReadRequestMsg(StartCriticalReadRequestMsg msg){
-        log.info("[CLIENT " + id + "] Received critical read msg request!");
-        int delayInSeconds = 60;
-        sendCriticalReadRequestMsg(msg.getKey(), delayInSeconds);
-    }
-
-    private void onStartCriticalWriteRequestMsg(StartCriticalWriteRequestMsg msg){
-        log.info("[CLIENT " + id + "] Received critical write msg request!");
-        int delayInSeconds = 2;
-        sendCriticalWriteRequestMsg(msg.getKey(), msg.getValue(), delayInSeconds);
-    }
-
-    public void onReadResponseMsg(ReadResponseMsg msg){
-        //receiveResponse(); //maybe not needed
-        log.info("[CLIENT " + id + "] Received read response from " + getSender().path().name() + " with value " + msg.getValue() + " for key " + msg.getKey());
-        operations.get(operations.size() - 1).setValue(msg.getValue());
-        operations.get(operations.size() - 1).setFinished(true);
-        operations.get(operations.size() - 1).setEndTime();
-        log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
-        log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
-    }
-
-    public void onCriticalReadResponseMsg(CriticalReadResponseMsg msg){
-        //receiveResponse(); //maybe not needed
-        log.info("[CLIENT " + id + "] Received CritRead response from " + getSender().path().name() + " with value " + msg.getValue() + " for key " + msg.getKey());
-        operations.get(operations.size() - 1).setValue(msg.getValue());
-        operations.get(operations.size() - 1).setFinished(true);
-        operations.get(operations.size() - 1).setEndTime();
-        log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
-        log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
-    }
-
-    private void onWriteResponseMsg(WriteResponseMsg msg) {
-        log.info("[CLIENT " + id + "] Received write response msg, with value " + msg.getValue() + " for key " + msg.getKey() + " from " + getSender().path().name());
-
-        operations.get(operations.size() - 1).setValue(msg.getValue());
-        operations.get(operations.size() - 1).setFinished(true);
-        operations.get(operations.size() - 1).setEndTime();
-        log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
-        log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
-        // when interacting with the same cache (l2 cache)
-        // the client is guaranteed not to read a value older than the last write
-    }
-
-    private void onCriticalWriteResponseMsg(CriticalWriteResponseMsg msg) {
-        log.info("[CLIENT " + id + "] Received critical write response msg, with value " + msg.getValue() + " for key " + msg.getKey() + " from " + getSender().path().name());
-
-        // print updated caches
-        log.info("[CLIENT " + id + "] Updated caches: " + msg.printUpdatedCaches());
-
-        operations.get(operations.size() - 1).setValue(msg.getValue());
-        operations.get(operations.size() - 1).setFinished(true);
-        operations.get(operations.size() - 1).setEndTime();
-        log.info("[CLIENT " + id + "] Operation " + operations.get(operations.size() - 1).getOperation() + " finished");
-        log.info("[CLIENT " + id + "] Operations list: " + operations.toString());
-
-    }
 }

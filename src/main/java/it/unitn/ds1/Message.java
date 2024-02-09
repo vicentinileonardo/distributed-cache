@@ -9,12 +9,20 @@ public class Message {
 
     // ----------GENERAL MESSAGES----------
     public static class InitMsg implements Serializable{
-        public final ActorRef id;
-        public final String type;
+        private final ActorRef id;
+        private final String type;
 
         public InitMsg(ActorRef id, String type) {
             this.id = id;
             this.type = type;
+        }
+
+        public ActorRef getId() {
+        	return this.id;
+        }
+
+        public String getType() {
+        	return this.type;
         }
     }
 
@@ -31,7 +39,7 @@ public class Message {
         // variable to store the string of the name of the actor on the other side of the connection
         private final String connectionDestination;
 
-        //for clients
+        //for clients, maybe not needed
         public TimeoutMsg(String type, String connectionDestination){
             this.type = type; //can be "read","write","connection"
             this.requestId = -1; //not used
@@ -59,9 +67,73 @@ public class Message {
 
     }
 
+    public static class DbTimeoutMsg implements Serializable{
+
+        private String type;
+        private final int key;
+        private final long requestId;
+
+        public DbTimeoutMsg(String type, int key, long requestId){
+            this.type = type;
+            this.key = key;
+            this.requestId = requestId;
+        }
+
+        public String getType() {
+            return this.type;
+        }
+
+        public int getKey() {
+        	return this.key;
+        }
+
+        public long getRequestId() {
+            return this.requestId;
+        }
+
+    }
+
+    public static class DropTmpWriteDataMsg implements Serializable{
+
+        private final int key;
+
+        public DropTmpWriteDataMsg(int key){
+            this.key = key;
+        }
+
+        public int getKey() {
+            return this.key;
+        }
+    }
+
     public static class InfoMsg implements Serializable{
         public InfoMsg() {}
     }
+
+    public static class StartHealthCheck implements Serializable{
+        public StartHealthCheck() {}
+    }
+
+    public static class HealthCheckRequestMsg implements Serializable{
+        public HealthCheckRequestMsg() {}
+    }
+
+    public static class HealthCheckResponseMsg implements Serializable{
+        private final Map<Integer, Integer> data;
+        public HealthCheckResponseMsg(Map<Integer, Integer> data){
+            this.data = data;
+        }
+
+        public Map<Integer, Integer> getData() {
+            return this.data;
+        }
+
+    }
+
+    public static class InfoItemsMsg implements Serializable {}
+
+    public static class ClientOperationsListMsg implements Serializable {}
+
 
     // ----------CRASH RELATED MESSAGES----------
     public static class CrashMsg implements Serializable{
@@ -103,6 +175,12 @@ public class Message {
 
         public Set<Integer> getKeys() {
             return this.keys;
+        }
+
+        //to string method
+        @Override
+        public String toString() {
+        	return "RequestUpdatedDataMsg: " + this.getKeys().toString();
         }
     }
 
@@ -331,71 +409,29 @@ public class Message {
     }
 
 
-
     // ----------WRITE MESSAGES----------
-    public static class WriteResponseMsg implements Serializable {
+    public static class StartWriteMsg implements Serializable{
         private final int key;
         private final int value;
-        public Stack<ActorRef> path;
-        private final long requestId;
-
-        public WriteResponseMsg(int key, int value, Stack<ActorRef> path, long requestId) {
-            this.key = key;
-            this.value = value;
-            this.path = path;
-            this.requestId = requestId;
-        }
-
-        public int getKey() {
-            return key;
-        }
-
-        public int getValue() {
-            return value;
-        }
-
-        public long getRequestId() {
-            return requestId;
-        }
-
-        public Stack<ActorRef> getPath() {
-            return path;
-        }
-
-        public int getPathSize() {
-            return path.size();
-        }
-
-        // Print the path
-        public String printPath() {
-            StringBuilder sb = new StringBuilder();
-            sb.append("Current path of message: [ ");
-            for (ActorRef actor : path) {
-                sb.append(actor.path().name()).append(" ");
-            }
-            sb.append(" ]");
-            return sb.toString();
-        }
-    }
-
-
-
-
-
-    public static class StartWriteMsg implements Serializable{ //TODO: change into private with getters
-        public final int key;
-        public final int value;
 
         public StartWriteMsg(int key, int value) {
             this.key = key;
             this.value = value;
         }
+
+        public int getKey() {
+            return this.key;
+        }
+
+        public int getValue() {
+            return this.value;
+        }
     }
 
     public static class WriteRequestMsg implements Serializable{
-        public final int key;
-        public final int value;
-        public Stack<ActorRef> path;
+        private final int key;
+        private final int value;
+        private Stack<ActorRef> path;
         private final long requestId;
 
         public WriteRequestMsg(int key, int value, Stack<ActorRef> path, long requestId) {
@@ -445,10 +481,54 @@ public class Message {
         }
     }
 
+    public static class WriteResponseMsg implements Serializable {
+        private final int key;
+        private final int value;
+        private Stack<ActorRef> path;
+        private final long requestId;
 
-    public static class FillMsg implements Serializable{ //TODO: private variables
-        public final int key;
-        public final int value;
+        public WriteResponseMsg(int key, int value, Stack<ActorRef> path, long requestId) {
+            this.key = key;
+            this.value = value;
+            this.path = path;
+            this.requestId = requestId;
+        }
+
+        public int getKey() {
+            return key;
+        }
+
+        public int getValue() {
+            return value;
+        }
+
+        public long getRequestId() {
+            return requestId;
+        }
+
+        public Stack<ActorRef> getPath() {
+            return path;
+        }
+
+        public int getPathSize() {
+            return path.size();
+        }
+
+        // Print the path
+        public String printPath() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("Current path of message: [ ");
+            for (ActorRef actor : path) {
+                sb.append(actor.path().name()).append(" ");
+            }
+            sb.append(" ]");
+            return sb.toString();
+        }
+    }
+
+    public static class FillMsg implements Serializable{
+        private final int key;
+        private final int value;
 
         public FillMsg(int key, int value) {
             this.key = key;
@@ -463,9 +543,6 @@ public class Message {
             return value;
         }
     }
-
-    public static class InfoItemsMsg implements Serializable {}
-
 
 
     // ----------CRITICAL READ MESSAGES----------
@@ -586,6 +663,8 @@ public class Message {
 
     }
 
+
+    // ----------CRITICAL READ MESSAGES----------
     public static class StartCriticalWriteRequestMsg implements Serializable {
         private final int key;
         private final int value;
@@ -655,12 +734,23 @@ public class Message {
             sb.append(" ]");
             return sb.toString();
         }
+
+        //toString
+        @Override
+        public String toString() {
+            return "CriticalWriteRequestMsg{" +
+                    "key=" + key +
+                    ", value=" + value +
+                    ", path=" + path +
+                    ", requestId=" + requestId +
+                    '}';
+        }
     }
 
     public static class CriticalWriteResponseMsg implements Serializable {
         private final int key;
         private final int value;
-        public Stack<ActorRef> path;
+        private Stack<ActorRef> path;
         private final long requestId;
         private final boolean isRefused;
 
@@ -734,10 +824,12 @@ public class Message {
     public static class ProposedWriteMsg implements Serializable {
         private final int key;
         private final int value;
+        private final long requestId;
 
-        public ProposedWriteMsg(int key, int value) {
+        public ProposedWriteMsg(int key, int value, long requestId) {
             this.key = key;
             this.value = value;
+            this.requestId = requestId;
         }
 
         public int getKey() {
@@ -746,6 +838,10 @@ public class Message {
 
         public int getValue() {
             return value;
+        }
+
+        public long getRequestId() {
+            return requestId;
         }
 
     }
@@ -753,14 +849,16 @@ public class Message {
     public static class AcceptedWriteMsg implements Serializable {
         private final int key;
         private final int value;
+        private final long requestId;
 
         // set to store the caches that have been effectively updated
         // must be set by L1 caches only
         private final Set<ActorRef> caches = new HashSet<>();
 
-        public AcceptedWriteMsg(int key, int value) {
+        public AcceptedWriteMsg(int key, int value, long requestId) {
             this.key = key;
             this.value = value;
+            this.requestId = requestId;
         }
 
         public int getKey() {
@@ -769,6 +867,10 @@ public class Message {
 
         public int getValue() {
             return value;
+        }
+
+        public long getRequestId() {
+            return requestId;
         }
 
         public Set<ActorRef> getCaches() {
@@ -788,10 +890,12 @@ public class Message {
     public static class ApplyWriteMsg implements Serializable {
         private final int key;
         private final int value;
+        private final long requestId;
 
-        public ApplyWriteMsg(int key, int value) {
+        public ApplyWriteMsg(int key, int value, long requestId) {
             this.key = key;
             this.value = value;
+            this.requestId = requestId;
         }
 
         public int getKey() {
@@ -800,6 +904,10 @@ public class Message {
 
         public int getValue() {
             return value;
+        }
+
+        public long getRequestId() {
+            return requestId;
         }
 
     }
@@ -807,14 +915,17 @@ public class Message {
     public static class ConfirmedWriteMsg implements Serializable {
         private final int key;
         private final int value;
+        private final long requestId;
+
 
         // set to store the caches that have been effectively updated
         // must be set by L1 caches only
         private final Set<ActorRef> caches = new HashSet<>();
 
-        public ConfirmedWriteMsg(int key, int value) {
+        public ConfirmedWriteMsg(int key, int value, long requestId) {
             this.key = key;
             this.value = value;
+            this.requestId = requestId;
         }
 
         public int getKey() {
@@ -823,6 +934,10 @@ public class Message {
 
         public int getValue() {
             return value;
+        }
+
+        public long getRequestId() {
+            return requestId;
         }
 
         public Set<ActorRef> getCaches() {
@@ -838,13 +953,6 @@ public class Message {
         }
 
     }
-
-
-
-
-
-
-
 
 
 }
